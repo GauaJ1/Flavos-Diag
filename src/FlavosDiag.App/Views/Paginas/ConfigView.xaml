@@ -46,7 +46,34 @@
                              MaxWidth="160" HorizontalAlignment="Left" Margin="0,0,0,6"
                              AutomationProperties.Name="Limiar de alerta de temperatura" />
                     <TextBlock Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
-                               Text="O gráfico destaca esta faixa. O teste não é encerrado sozinho: quem decide parar é você." />
+                               Text="O gráfico destaca esta faixa. É só um aviso visual: não encerra o teste." />
+
+                    <TextBlock Text="Parar o stress sozinho ao atingir (°C)" Style="{StaticResource RotuloCampo}" Margin="0,14,0,4" />
+                    <TextBox Style="{StaticResource CaixaTexto}" Text="{Binding LimiteParadaTexto, UpdateSourceTrigger=PropertyChanged}"
+                             MaxWidth="160" HorizontalAlignment="Left" Margin="0,0,0,6"
+                             AutomationProperties.Name="Limite de parada automática de temperatura" />
+                    <TextBlock Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
+                               Text="Entre 60 e 120 °C (padrão 100). O teste para quando a temperatura do processador fica neste valor por 3 leituras seguidas. O botão Parar continua sempre disponível." />
+
+                    <TextBlock Text="Teto de duração do stress (minutos)" Style="{StaticResource RotuloCampo}" Margin="0,14,0,4" />
+                    <TextBox Style="{StaticResource CaixaTexto}" Text="{Binding TetoDuracaoTexto, UpdateSourceTrigger=PropertyChanged}"
+                             MaxWidth="160" HorizontalAlignment="Left" Margin="0,0,0,6"
+                             AutomationProperties.Name="Teto de duração do stress em minutos" />
+                    <TextBlock Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
+                               Text="Entre 1 e 60 minutos (padrão 30). Sem leitura de temperatura da CPU, o teste para em 2 minutos, salvo se você confirmar a continuação." />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Cartao}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Diagnóstico de sensores" Style="{StaticResource TituloSecao}" FontSize="15" Margin="0,0,0,10" />
+                    <TextBlock Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
+                               Text="Gera um arquivo .json e um .txt com o ambiente (administrador, driver PawnIO, versão do Windows e da biblioteca), a CPU e todos os sensores — inclusive os que não devolveram valor. Útil quando a temperatura não aparece. Não contém números de série." />
+                    <Button Style="{StaticResource BotaoSecundario}" Content="Exportar diagnóstico de sensores"
+                            Command="{Binding ExportarDiagnosticoSensoresCommand}" Margin="0,10,0,0"
+                            HorizontalAlignment="Left" MinHeight="40"
+                            AutomationProperties.Name="Exportar diagnóstico de sensores" />
+                    <TextBlock Text="{Binding StatusDump}" Style="{StaticResource TextoSuave}" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 

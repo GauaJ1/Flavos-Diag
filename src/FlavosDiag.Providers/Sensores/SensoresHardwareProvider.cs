@@ -2,6 +2,7 @@ using System.Security.Principal;
 using FlavosDiag.Core;
 using FlavosDiag.Core.Abstractions;
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Core.Monitor;
 using LibreHardwareMonitor.Hardware;
 
 namespace FlavosDiag.Providers.Sensores;
@@ -22,6 +23,9 @@ public sealed class SensoresHardwareProvider : ISensorProvider
     private bool _aberto;
     private string? _causaFalha;
 
+    // Último catálogo de sensores de temperatura sem leitura, para não reenumerar a cada segundo.
+    private List<SensorSemLeitura> _semLeitura = new();
+
     public string Nome => "LibreHardwareMonitor (sensores de placa)";
 
     public IReadOnlyList<ValorSensor> SensoresDisponiveis
@@ -31,6 +35,18 @@ public sealed class SensoresHardwareProvider : ISensorProvider
             lock (_trava)
             {
                 return _disponiveis.ToList();
+            }
+        }
+    }
+
+    /// <summary>Sensores de temperatura reconhecidos pelo coletor mas sem valor utilizável.</summary>
+    public IReadOnlyList<SensorSemLeitura> SensoresSemLeitura
+    {
+        get
+        {
+            lock (_trava)
+            {
+                return _semLeitura.ToList();
             }
         }
     }
@@ -79,18 +95,24 @@ public sealed class SensoresHardwareProvider : ISensorProvider
                     _computador.Open();
 
                     // Enumeramos os sensores uma vez; a lista serve de catálogo para a interface.
-                    _disponiveis = LerTodos().ToList();
+                    var leitura = LerTudo();
+                    _disponiveis = leitura.Valores;
+                    _semLeitura = leitura.SemLeitura;
                     _aberto = true;
                     _causaFalha = null;
 
+                    // "Nenhum sensor" não é o mesmo que "sensores, mas sem temperatura utilizável".
+                    // Uma máquina que expõe carga e clock mas não temperatura ainda é útil.
                     if (_disponiveis.Count == 0)
                     {
-                        var causa = ProcessoElevado()
-                            ? "A biblioteca abriu, mas este equipamento não expõe sensores legíveis."
-                            : "Sem elevação: este equipamento só expõe sensores para um processo administrador. " +
-                              "Execute o aplicativo como administrador para ver temperatura e clock.";
-                        _causaFalha = causa;
-                        return Leitura<bool>.NaoSuportado(causa);
+                        _causaFalha = DiagnosticoSensores.TextoDeCausa(
+                            DiagnosticoSensores.Avaliar(
+                                ProcessoElevado(),
+                                ConsultarPawnIo(),
+                                sensoresTermicos: _semLeitura.Count,
+                                sensoresTermicosComLeitura: 0,
+                                mensagemAbertura: "A biblioteca não expôs nenhum sensor legível."));
+                        return Leitura<bool>.NaoSuportado(_causaFalha);
                     }
 
                     return Leitura<bool>.Ok(true, _disponiveis.Count + " sensor(es) disponíveis");
@@ -98,15 +120,31 @@ public sealed class SensoresHardwareProvider : ISensorProvider
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     FecharInterno();
-                    var causa = ProcessoElevado()
-                        ? "Não foi possível abrir os sensores: " + ex.Message
-                        : "Sem elevação: o driver de leitura de sensores não pôde ser carregado (" + ex.Message + "). " +
-                          "Execute o aplicativo como administrador.";
-                    _causaFalha = causa;
-                    return Leitura<bool>.NaoSuportado(causa);
+                    _causaFalha = DiagnosticoSensores.TextoDeCausa(
+                        DiagnosticoSensores.Avaliar(
+                            ProcessoElevado(),
+                            ConsultarPawnIo(),
+                            sensoresTermicos: 0,
+                            sensoresTermicosComLeitura: 0,
+                            mensagemAbertura: "Não foi possível abrir os sensores: " + ex.Message));
+                    return Leitura<bool>.NaoSuportado(_causaFalha);
                 }
             }
         }, cancelamento);
+    }
+
+    /// <summary>Consulta o PawnIO pela API pública da biblioteca; devolve null se não for possível saber.</summary>
+    public static bool? ConsultarPawnIo()
+    {
+        try
+        {
+            return LibreHardwareMonitor.PawnIo.PawnIo.IsInstalled;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A API pode mudar entre versões da biblioteca; nesse caso a causa fica "não determinada".
+            return null;
+        }
     }
 
     public AmostraSensores Ler()
@@ -125,12 +163,15 @@ public sealed class SensoresHardwareProvider : ISensorProvider
 
             try
             {
-                var valores = LerTodos().ToList();
+                var leitura = LerTudo();
+                _semLeitura = leitura.SemLeitura;
+
                 return new AmostraSensores
                 {
                     Quando = DateTimeOffset.Now,
-                    Valores = valores,
-                    CausaAusencia = valores.Count == 0
+                    Valores = leitura.Valores,
+                    SemLeitura = leitura.SemLeitura,
+                    CausaAusencia = leitura.Valores.Count == 0
                         ? "Nenhum sensor devolveu valor nesta leitura."
                         : null,
                 };
@@ -147,23 +188,31 @@ public sealed class SensoresHardwareProvider : ISensorProvider
         }
     }
 
-    private IEnumerable<ValorSensor> LerTodos()
+    private (List<ValorSensor> Valores, List<SensorSemLeitura> SemLeitura) LerTudo()
     {
+        var valores = new List<ValorSensor>();
+        var semLeitura = new List<SensorSemLeitura>();
+
         if (_computador is null)
         {
-            yield break;
+            return (valores, semLeitura);
         }
 
         foreach (var hardware in _computador.Hardware)
         {
-            foreach (var sensor in LerHardware(hardware))
-            {
-                yield return sensor;
-            }
+            LerHardware(hardware, valores, semLeitura);
         }
+
+        return (valores, semLeitura);
     }
 
-    private static IEnumerable<ValorSensor> LerHardware(IHardware hardware)
+    /// <summary>
+    /// Lê um componente e seus subcomponentes (SuperIO fica em SubHardware da placa).
+    /// </summary>
+    private static void LerHardware(
+        IHardware hardware,
+        List<ValorSensor> valores,
+        List<SensorSemLeitura> semLeitura)
     {
         try
         {
@@ -172,44 +221,82 @@ public sealed class SensoresHardwareProvider : ISensorProvider
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Um controlador problemático não pode derrubar a leitura dos demais.
-            yield break;
+            return;
         }
 
         foreach (var sub in hardware.SubHardware)
         {
-            foreach (var sensor in LerHardware(sub))
-            {
-                yield return sensor;
-            }
+            LerHardware(sub, valores, semLeitura);
         }
+
+        var tipoHardware = TipoDe(hardware.HardwareType);
 
         foreach (var sensor in hardware.Sensors)
         {
             var tipo = sensor.SensorType;
-
             var categoria = CategoriaDe(tipo);
             if (categoria is null)
             {
                 continue;
             }
 
+            var nomeSensor = sensor.Name;
+            var id = hardware.Identifier + "/" + sensor.Identifier;
             var valor = sensor.Value;
-            if (valor is null || double.IsNaN(valor.Value) || double.IsInfinity(valor.Value))
+
+            // A sentinela é tratada aqui, na origem, e não só na hora de exibir: assim o catálogo,
+            // o laudo e os vereditos veem "sem leitura" e não um 0 °C que parece medição.
+            if (tipo == SensorType.Temperature)
+            {
+                if (TemperaturaFisica.EhSentinela(valor, sensor.Min, sensor.Max) || !TemperaturaFisica.Valida(valor))
+                {
+                    semLeitura.Add(new SensorSemLeitura
+                    {
+                        Id = id,
+                        Categoria = CategoriaSensor.Temperatura,
+                        TipoHardware = tipoHardware,
+                        NomeHardware = hardware.Name,
+                        NomeSensor = nomeSensor,
+                        Unidade = "°C",
+                        ValorBruto = valor,
+                        Minimo = sensor.Min,
+                        Maximo = sensor.Max,
+                        Motivo = TemperaturaFisica.MotivoSemLeitura(valor, sensor.Min, sensor.Max),
+                    });
+                    continue;
+                }
+            }
+            else if (valor is null || double.IsNaN(valor.Value) || double.IsInfinity(valor.Value))
             {
                 // Sem valor não é zero: o sensor é omitido e aparece como "sem leitura".
                 continue;
             }
 
-            yield return new ValorSensor
+            valores.Add(new ValorSensor
             {
-                Id = hardware.Identifier + "/" + sensor.Identifier,
+                Id = id,
                 Categoria = categoria.Value,
-                Rotulo = hardware.Name + " — " + sensor.Name,
-                Valor = Math.Round(valor.Value, 2),
+                Rotulo = hardware.Name + " — " + nomeSensor,
+                Valor = Math.Round(valor!.Value, 2),
                 Unidade = UnidadeDe(tipo),
-            };
+                TipoHardware = tipoHardware,
+                NomeHardware = hardware.Name,
+                NomeSensor = nomeSensor,
+                Qualidade = QualidadeSensor.Ok,
+            });
         }
     }
+
+    private static TipoHardware TipoDe(HardwareType tipo) => tipo switch
+    {
+        HardwareType.Cpu => TipoHardware.Cpu,
+        HardwareType.GpuNvidia or HardwareType.GpuAmd or HardwareType.GpuIntel => TipoHardware.Gpu,
+        HardwareType.Motherboard => TipoHardware.Placa,
+        HardwareType.SuperIO or HardwareType.EmbeddedController => TipoHardware.SuperIo,
+        HardwareType.Memory => TipoHardware.Memoria,
+        HardwareType.Storage => TipoHardware.Armazenamento,
+        _ => TipoHardware.Outro,
+    };
 
     private static CategoriaSensor? CategoriaDe(SensorType tipo) => tipo switch
     {
@@ -248,6 +335,7 @@ public sealed class SensoresHardwareProvider : ISensorProvider
             _computador = null;
             _aberto = false;
             _disponiveis = new List<ValorSensor>();
+            _semLeitura = new List<SensorSemLeitura>();
         }
     }
 

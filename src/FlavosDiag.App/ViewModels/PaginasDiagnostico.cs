@@ -185,6 +185,17 @@ public sealed partial class CpuViewModel : PaginaBase
     [ObservableProperty]
     private string? _temperaturaAgora;
 
+    /// <summary>Causa da falta de leitura de temperatura, com orientação do que fazer.</summary>
+    [ObservableProperty]
+    private string? _diagnosticoSensores;
+
+    /// <summary>Se o comando de instalação do driver deve aparecer.</summary>
+    [ObservableProperty]
+    private bool _sugereInstalarDriver;
+
+    /// <summary>Comando sugerido, apenas para copiar.</summary>
+    public string ComandoInstalacaoDriver => Core.Monitor.DiagnosticoSensores.ComandoInstalacao;
+
     [ObservableProperty]
     private bool _estressando;
 
@@ -244,13 +255,77 @@ public sealed partial class CpuViewModel : PaginaBase
             ? "Sem leitura de temperatura"
             : $"{temperatura:0} °C";
 
+        AtualizarDiagnostico(ultima);
+
         Status = Principal.Inventario?.Cpu is null
             ? "Os dados do processador aparecem após a leitura do sistema."
             : "Carga de CPU: mantém o processador ocupado e monitora a temperatura.";
     }
 
+    /// <summary>Explica a falta de leitura de temperatura da CPU, com a causa verificada.</summary>
+    private void AtualizarDiagnostico(AmostraSensores? ultima)
+    {
+        var dados = Principal.AmostrasSensores;
+        var amostra = ultima ?? (dados.Count > 0 ? dados[^1] : null);
+        var servico = new Services.ServicoDiagnosticoSensores(Principal.Servicos);
+        var fatos = servico.FatosCompletos(amostra);
+
+        DiagnosticoSensores = Core.Monitor.DiagnosticoSensores.TextoDeCausa(fatos);
+        SugereInstalarDriver = Core.Monitor.DiagnosticoSensores.SugereInstalacaoDeDriver(fatos);
+    }
+
+    /// <summary>Fecha e reabre a sessão de sensores para tentar de novo.</summary>
     [RelayCommand]
-    private async Task Estressar()
+    private async Task ReverificarSensoresAsync()
+    {
+        // Uma leitura avulsa, sem carga: serve para saber se o sensor voltou a responder depois de
+        // o técnico instalar o driver ou reabrir o aplicativo elevado.
+        AmostraSensores? amostra = null;
+        try
+        {
+            var sessao = Principal.Servicos.Sensores.Criar();
+            try
+            {
+                var abertura = await sessao.AbrirAsync();
+                if (abertura.Disponivel)
+                {
+                    amostra = sessao.Ler();
+                }
+            }
+            finally
+            {
+                await sessao.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Status = "Não foi possível reler os sensores: " + ex.Message;
+        }
+
+        if (amostra is not null)
+        {
+            Principal.AmostrasSensores = new[] { amostra };
+        }
+
+        var temperatura = amostra is null ? null : CargaCpuRunner.TemperaturaDaCpu(amostra);
+        TemperaturaAgora = temperatura is null
+            ? "Sem leitura de temperatura"
+            : $"{temperatura:0} °C";
+
+        AtualizarDiagnostico(amostra);
+    }
+
+    /// <summary>
+    /// Estresse rápido desta página.
+    /// </summary>
+    /// <remarks>
+    /// Esta versão rodava com o último instantâneo da sessão como fonte de temperatura — uma amostra
+    /// velha, copiada antes do teste começar. O limite térmico nunca via a temperatura real, e o teste
+    /// seguia por cinco minutos sem proteção nem botão de parar. Agora abre a própria sessão de
+    /// sensores, usa o mesmo limitador da tela de Stress e pode ser interrompido.
+    /// </remarks>
+    [RelayCommand(IncludeCancelCommand = true)]
+    private async Task EstressarAsync(CancellationToken cancelamento)
     {
         if (Estressando)
         {
@@ -258,18 +333,48 @@ public sealed partial class CpuViewModel : PaginaBase
         }
 
         var minutos = 5;
+        var limiteParada = Principal.Configuracao.LimiteParadaAutomaticaCelsius;
         if (!Principal.Confirmar(
                 "Teste de estresse da CPU",
                 $"O processador será mantido sob carga total por até {minutos} minutos.\n\n" +
-                "O teste para sozinho ao atingir 90 °C. Se não houver leitura de temperatura, para em 2 minutos.\n\n" +
+                $"O teste para sozinho ao atingir {limiteParada:0} °C (limite de proteção) e, de qualquer forma, " +
+                $"ao fim de {minutos} minutos.\n\n" +
+                "Sem leitura de temperatura do processador, ele para em 2 minutos.\n\n" +
                 "Use apenas com o equipamento em superfície ventilada. Deseja continuar?"))
         {
             return;
         }
 
         Estressando = true;
+        var sessao = Principal.Servicos.Sensores.Criar();
         try
         {
+            var abertura = await sessao.AbrirAsync(cancelamento);
+            var temSensor = false;
+
+            AmostraSensores? ultima = null;
+            Func<AmostraSensores?> leituraSensores = () =>
+            {
+                try
+                {
+                    ultima = sessao.Ler();
+                    return ultima;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    return null;
+                }
+            };
+
+            if (abertura.Disponivel)
+            {
+                temSensor = CargaCpuRunner.TemperaturaDaCpu(leituraSensores() ?? new AmostraSensores
+                {
+                    Quando = DateTimeOffset.Now,
+                    Valores = Array.Empty<ValorSensor>(),
+                }) is not null;
+            }
+
             var progresso = new Progress<ProgressoEstresse>(p =>
             {
                 var decorrido = $"{(int)p.Decorrido.TotalMinutes}:{p.Decorrido.Seconds:00}";
@@ -278,7 +383,6 @@ public sealed partial class CpuViewModel : PaginaBase
                     : $"Sem leitura de temperatura · decorrido {decorrido}";
             });
 
-            // Assinatura real: (configuração, núcleos, threads, leitura de sensores, progresso, cancelamento).
             var nucleos = Principal.Inventario?.Cpu.NucleosFisicos.Disponivel == true
                 ? Principal.Inventario.Cpu.NucleosFisicos.Valor
                 : Environment.ProcessorCount;
@@ -286,26 +390,46 @@ public sealed partial class CpuViewModel : PaginaBase
                 ? Principal.Inventario.Cpu.ThreadsLogicas.Valor
                 : Environment.ProcessorCount;
 
-            Func<AmostraSensores?> leituraSensores = () => Principal.AmostrasSensores.Count > 0
-                ? Principal.AmostrasSensores[^1]
-                : null;
+            // Sem leitura da CPU: o teto de 2 minutos vale. Passar disso exige confirmação explícita.
+            var permitirSemSensor = false;
+            if (!temSensor)
+            {
+                permitirSemSensor = Principal.Confirmar(
+                    "Carga sem leitura de temperatura",
+                    "A temperatura da CPU não tem leitura nesta execução.\n\n" +
+                    $"Por segurança, o teste para sozinho em {FormatacaoBr.Duracao(CargaCpuRunner.TetoSemSensor)}.\n\n" +
+                    $"Deseja continuar mesmo assim, até o máximo de " +
+                    $"{FormatacaoBr.Duracao(CargaCpuRunner.TetoSemSensorConfirmado)}? " +
+                    "Nesse caso nenhum limite térmico poderá protegê-lo.");
+
+                if (!permitirSemSensor)
+                {
+                    TextoEstresse = "Teste cancelado: não há leitura de temperatura para proteger o equipamento.";
+                    return;
+                }
+            }
 
             var resultado = await Principal.Servicos.CargaCpu.EstressarAsync(
                 new ConfiguracaoEstresse
                 {
                     Perfil = PerfilCarga.Pesado,
                     DuracaoMaxima = TimeSpan.FromMinutes(minutos),
-                    LimiteTemperaturaCelsius = 90,
+                    LimiteTemperaturaCelsius = limiteParada,
+                    PermitirSemSensor = permitirSemSensor,
                 },
                 nucleos,
                 threads,
                 leituraSensores,
                 progresso,
-                CancellationToken.None);
+                cancelamento);
 
             Principal.EstresseCpu = resultado;
             TextoEstresse = resultado.MotivoParadaTexto;
             Montar();
+        }
+        catch (OperationCanceledException)
+        {
+            TextoEstresse = "Teste interrompido por você. Nenhum veredito foi emitido.";
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -313,6 +437,7 @@ public sealed partial class CpuViewModel : PaginaBase
         }
         finally
         {
+            await sessao.DisposeAsync();
             Estressando = false;
         }
     }

@@ -27,7 +27,7 @@ public static class Fase3Tests
 
     private static async Task ParaNoLimiteDeTemperatura()
     {
-        var sensores = new FakeSensorProvider(FakeSensorProvider.Rampa(60, 20)); // 60, 80, 100...
+        var sensores = new FakeSensorProvider(FakeSensorProvider.Rampa(80, 10)); // 60, 80, 100...
         await sensores.AbrirAsync();
         var runner = new CargaCpuRunner();
 

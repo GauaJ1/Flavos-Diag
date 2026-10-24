@@ -1,9 +1,11 @@
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FlavosDiag.App.Services;
 using FlavosDiag.Core;
 using FlavosDiag.Core.Modelos;
 using FlavosDiag.Core.Monitor;
+using FlavosDiag.Workloads;
 
 namespace FlavosDiag.App.ViewModels;
 
@@ -33,6 +35,18 @@ public sealed partial class StressViewModel : PaginaBase
     /// fechado, senão a tela de diagnóstico não consegue abrir o seu depois.
     /// </summary>
     private Core.Abstractions.ISensorProvider? _sensores;
+
+    /// <summary>Proteção térmica da execução atual.</summary>
+    private ProtecaoTermica? _protecao;
+
+    /// <summary>Motivo quando a própria proteção encerra o teste.</summary>
+    private string? _paradaAutomatica;
+
+    /// <summary>Confirmação explícita de seguir sem leitura de temperatura.</summary>
+    private bool _confirmaSemSensor;
+
+    /// <summary>Relógio da proteção; separado do cronômetro do runner para incluir a abertura.</summary>
+    private readonly System.Diagnostics.Stopwatch _relogioProtecao = new();
 
     public StressViewModel(MainViewModel principal)
         : base(principal, "Stress", "IconeCpu")
@@ -68,6 +82,25 @@ public sealed partial class StressViewModel : PaginaBase
 
     [ObservableProperty]
     private string? _avisoTemperatura;
+
+    /// <summary>Aviso sobre o teto de duração quando não há leitura de temperatura.</summary>
+    [ObservableProperty]
+    private string? _avisoSemSensor;
+
+    /// <summary>Causa da falta de leitura, com orientação do que fazer.</summary>
+    [ObservableProperty]
+    private string? _diagnosticoSensores;
+
+    /// <summary>Se o comando de instalação do driver deve aparecer na faixa de aviso.</summary>
+    [ObservableProperty]
+    private bool _sugereInstalarDriver;
+
+    /// <summary>Comando sugerido, apenas para copiar — nunca executado pelo aplicativo.</summary>
+    public string ComandoInstalacaoDriver => Core.Monitor.DiagnosticoSensores.ComandoInstalacao;
+
+    /// <summary>Aviso de que faltam menos de 1 minuto para o teto de duração.</summary>
+    [ObservableProperty]
+    private string? _avisoFinal;
 
     /// <summary>Motivo pelo qual não há curva. Sem isso, o gráfico vazio pareceria travado.</summary>
     [ObservableProperty]
@@ -124,15 +157,52 @@ public sealed partial class StressViewModel : PaginaBase
 
         try
         {
+            // Sonda a temperatura antes de aplicar carga: decidir o teto com a CPU já sob stress
+            // seria tarde para escolher quanta carga expor um equipamento que não responde.
+            var temSensor = Amostrar().TemperaturaCpuCelsius is not null;
+
+            _protecao = new ProtecaoTermica(
+                Principal.Configuracao.LimiteParadaAutomaticaCelsius,
+                CargaCpuRunner.TetoSemSensor,
+                TimeSpan.FromMinutes(Math.Clamp(Principal.Configuracao.TetoDuracaoStressMinutos, 1, 120)));
+            _protecao.Reiniciar();
+            _paradaAutomatica = null;
+
+            if (!temSensor)
+            {
+                // Sem leitura de temperatura nenhuma, o teto de 2 minutos vale. Seguir além disso
+                // só com confirmação explícita, porque carga total sem proteção é risco ao equipamento.
+                var estender = Principal.Confirmar(
+                    "Carga sem leitura de temperatura",
+                    "A temperatura da CPU não tem leitura nesta execução.\n\n" +
+                    $"Por segurança, o teste para sozinho em {FormatacaoBr.Duracao(CargaCpuRunner.TetoSemSensor)}.\n\n" +
+                    $"Deseja continuar mesmo assim, até o máximo de " +
+                    $"{FormatacaoBr.Duracao(CargaCpuRunner.TetoSemSensorConfirmado)}? " +
+                    "Nesse caso nenhum limite térmico poderá protegê-lo.");
+
+                if (!estender)
+                {
+                    AvisoSemSensor = "Teste cancelado: não há leitura de temperatura para proteger o equipamento.";
+                    return;
+                }
+
+                _confirmaSemSensor = true;
+                AvisoSemSensor = "Carga sem leitura de temperatura, confirmada por você. O teste será encerrado em " +
+                                 FormatacaoBr.Duracao(CargaCpuRunner.TetoSemSensorConfirmado) + ".";
+            }
+
             var configuracao = new ConfiguracaoEstresse
             {
                 Perfil = PerfilCarga.Pesado,
 
-                // Teto alto de propósito: quem encerra é o técnico, não o relógio.
-                DuracaoMaxima = TimeSpan.FromHours(4),
+                // Três limites independentes: o teto de duração, o teto sem sensor e a parada térmica.
+                DuracaoMaxima = _protecao.TetoDuracao,
 
-                // Sem limite automático de temperatura — o gráfico avisa, o técnico decide.
-                LimiteTemperaturaCelsius = double.MaxValue,
+                // A parada térmica pela temperatura de confiança alta. Sentinelas (0/255) já foram
+                // descartados na leitura, então este limite nunca é atingido por leitura inválida.
+                LimiteTemperaturaCelsius = _protecao.LimiteParadaCelsius,
+
+                PermitirSemSensor = _confirmaSemSensor,
             };
 
             var resultado = await Principal.Servicos.CargaCpu.EstressarAsync(
@@ -150,7 +220,9 @@ public sealed partial class StressViewModel : PaginaBase
         }
         catch (OperationCanceledException)
         {
-            ResumoExecucao = "Teste interrompido por você. Nenhum veredito foi emitido.";
+            // A parada automática também cancela; nesse caso a mensagem é da proteção, não do técnico.
+            ResumoExecucao = _paradaAutomatica
+                ?? "Teste interrompido por você. Nenhum veredito foi emitido.";
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -168,6 +240,25 @@ public sealed partial class StressViewModel : PaginaBase
         }
     }
 
+    /// <summary>
+    /// Fecha e reabre a sessão de sensores. Serve para depois de o técnico instalar o driver ou
+    /// reabrir o app elevado — o driver só passa a valer numa sessão nova.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReverificarSensoresAsync()
+    {
+        if (_sensores is not null)
+        {
+            await _sensores.DisposeAsync();
+            _sensores = null;
+        }
+
+        _sensores = Principal.Servicos.Sensores.Criar();
+        var abertura = await _sensores.AbrirAsync();
+        CausaSemLeitura = abertura.Disponivel ? null : abertura.Causa;
+        AtualizarDiagnostico();
+    }
+
     /// <summary>Parada explícita pelo técnico.</summary>
     [RelayCommand]
     private void Parar()
@@ -181,12 +272,22 @@ public sealed partial class StressViewModel : PaginaBase
     }
 
     /// <summary>Encerra o que estiver rodando. Chamado ao fechar a janela.</summary>
+    /// <remarks>
+    /// Cancela antes de descarregar o driver. A liberação é feita sem bloquear a interface: o runner
+    /// pode estar dentro de <c>Ler()</c>, segurando o bloqueio do provider. Esperar por ele aqui
+    /// travaria o fechamento da janela — e o cancelamento já basta para a carga parar.
+    /// </remarks>
     public void Encerrar()
     {
         PararRelogio();
         _cancelamento?.Cancel();
-        _sensores?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        var sessao = _sensores;
         _sensores = null;
+        if (sessao is not null)
+        {
+            _ = sessao.DisposeAsync().AsTask();
+        }
     }
 
     private AmostraSensores? LerAmostraBruta()
@@ -223,8 +324,9 @@ public sealed partial class StressViewModel : PaginaBase
 
     /// <summary>
     /// Uma amostra. A ausência de leitura é registrada com causa; nunca vira 0 no gráfico.
+    /// Devolve a amostra para que a proteção térmica possa decidir com o mesmo dado da tela.
     /// </summary>
-    private void Amostrar()
+    private AmostraTemporal Amostrar()
     {
         var agora = DateTimeOffset.Now;
         var segundos = Math.Max(0, (agora - _inicio).TotalSeconds);
@@ -241,17 +343,12 @@ public sealed partial class StressViewModel : PaginaBase
             var amostra = _sensores?.Ler();
             if (amostra is null)
             {
-                causaCpu = amostra?.CausaAusencia ?? "o coletor de sensores não devolveu amostra";
+                causaCpu = "o coletor de sensores não devolveu amostra";
             }
             else
             {
-                var temperaturas = amostra.Valores
-                    .Where(v => v.Categoria == CategoriaSensor.Temperatura)
-                    .Select(v => (v.Rotulo, v.Valor))
-                    .ToList();
-
-                tempCpu = ClassificadorTemperatura.DaCpu(temperaturas, out causaCpu);
-                tempGpu = ClassificadorTemperatura.DaGpu(temperaturas, out causaGpu);
+                tempCpu = ClassificadorTemperatura.DaCpu(amostra, out causaCpu);
+                tempGpu = ClassificadorTemperatura.DaGpu(amostra, out causaGpu);
 
                 // FirstOrDefault devolve a referência padrão (null) do record quando não há carga
                 // "Total"; ler .Valor direto estouraria. Por isso a carga é tratada como opcional.
@@ -266,7 +363,7 @@ public sealed partial class StressViewModel : PaginaBase
             causaCpu = "falha ao ler os sensores: " + ex.Message;
         }
 
-        _historico.Adicionar(new AmostraTemporal
+        var temporal = new AmostraTemporal
         {
             Quando = agora,
             Segundos = segundos,
@@ -275,7 +372,9 @@ public sealed partial class StressViewModel : PaginaBase
             CargaCpuPercentual = carga,
             CausaCpu = causaCpu,
             CausaGpu = causaGpu,
-        });
+        };
+
+        _historico.Adicionar(temporal);
 
         Pontos = _historico.Janela(JanelaGraficoSegundos);
 
@@ -303,6 +402,61 @@ public sealed partial class StressViewModel : PaginaBase
         CausaSemLeitura = tempCpu is null && tempGpu is null
             ? causaCpu ?? causaGpu ?? "os sensores não informaram temperatura"
             : null;
+
+        AtualizarDiagnostico();
+        AplicarProtecao(tempCpu, TimeSpan.FromSeconds(segundos));
+
+        return temporal;
+    }
+
+    /// <summary>
+    /// Atualiza a causa da falta de leitura com a orientação certa (elevação, driver, biblioteca).
+    /// </summary>
+    private void AtualizarDiagnostico()
+    {
+        var ultima = _sensores is null ? null : LerAmostraBruta();
+        var servico = new ServicoDiagnosticoSensores(Principal.Servicos);
+        var fatos = servico.FatosCompletos(ultima);
+
+        DiagnosticoSensores = Core.Monitor.DiagnosticoSensores.TextoDeCausa(fatos);
+        SugereInstalarDriver = Core.Monitor.DiagnosticoSensores.SugereInstalacaoDeDriver(fatos);
+    }
+
+    /// <summary>
+    /// Aplica os limites de segurança a cada tique. O runner também avalie a temperatura por conta
+    /// própria (e o teto sem sensor e o de duração valem lá), então esta camada é a que atualiza a
+    /// tela e antecipa a parada. Qualquer falha aqui cancela o teste: um erro na verificação não
+    /// pode significar continuar a carga sem ninguém olhando.
+    /// </summary>
+    private void AplicarProtecao(double? temperaturaCpu, TimeSpan decorrido)
+    {
+        if (_protecao is null || !Executando || _paradaAutomatica is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            var temSensor = temperaturaCpu is not null;
+            var restante = _protecao.TetoDuracao - decorrido;
+            AvisoFinal = temSensor && restante <= TimeSpan.FromMinutes(1) && restante > TimeSpan.Zero
+                ? $"Faltam {FormatacaoBr.Duracao(restante)} para o teto de duração do teste."
+                : null;
+
+            if (_protecao.Avaliar(temperaturaCpu, decorrido, temSensor) is { } parada)
+            {
+                _paradaAutomatica = parada.Texto;
+                ResumoExecucao = parada.Texto;
+                _cancelamento?.Cancel();
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _paradaAutomatica =
+                "Parado pela proteção: falha ao verificar os limites de segurança (" + ex.Message + ").";
+            ResumoExecucao = _paradaAutomatica;
+            _cancelamento?.Cancel();
+        }
     }
 
     protected override Task CarregarAsync() => Task.CompletedTask;

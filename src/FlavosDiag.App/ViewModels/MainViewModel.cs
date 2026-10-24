@@ -153,6 +153,33 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Janela = janela;
         TemaEscuro = Configuracao.Tema != "Claro";
+
+        // Fechar a janela precisa encerrar o stress. Sem isto, as threads de carga continuavam
+        // ocupando o processador depois do aplicativo fechar — e sem nenhuma tela para pará-las.
+        janela.Closing += (_, _) => EncerrarTudo();
+        Application.Current.SessionEnding += (_, _) => EncerrarTudo();
+    }
+
+    /// <summary>Interrompe trabalho em andamento e fecha a sessão de sensores.</summary>
+    public void EncerrarTudo()
+    {
+        try
+        {
+            StressVm.Encerrar();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Falha ao encerrar não pode impedir o fechamento da janela.
+        }
+
+        try
+        {
+            Servicos.Dispose();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Idem: encerramento best-effort.
+        }
     }
 
     public ObservableCollection<ItemNav> ItensNav { get; } = new();

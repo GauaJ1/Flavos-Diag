@@ -148,9 +148,22 @@ public sealed class FakeSensorProvider : ISensorProvider
     /// <summary>Série de temperatura do "CPU Package" subindo linearmente.</summary>
     public static Func<int, IReadOnlyList<ValorSensor>> Rampa(double inicio = 40, double passo = 1.0) => i => new[]
     {
-        new ValorSensor { Id = "cpu/temp", Categoria = CategoriaSensor.Temperatura, Rotulo = "CPU Temperatura", Valor = inicio + i * passo, Unidade = "°C" },
-        new ValorSensor { Id = "cpu/clock", Categoria = CategoriaSensor.Clock, Rotulo = "CPU Clock", Valor = 4200 - Math.Min(i * 10, 800), Unidade = "MHz" },
-        new ValorSensor { Id = "cpu/load", Categoria = CategoriaSensor.Carga, Rotulo = "CPU Carga", Valor = 100, Unidade = "%" },
+        // O sensor precisa se identificar como CPU: só temperatura do próprio processador alimenta
+        // a parada de segurança. Sem isso, a proteção térmica nunca enxerga a leitura.
+        new ValorSensor
+        {
+            Id = "cpu/temp",
+            Categoria = CategoriaSensor.Temperatura,
+            Rotulo = "CPU Temperatura",
+            NomeSensor = "CPU Package",
+            NomeHardware = "CPU",
+            TipoHardware = TipoHardware.Cpu,
+            Qualidade = QualidadeSensor.Ok,
+            Valor = inicio + i * passo,
+            Unidade = "°C",
+        },
+        new ValorSensor { Id = "cpu/clock", Categoria = CategoriaSensor.Clock, Rotulo = "CPU Clock", TipoHardware = TipoHardware.Cpu, Valor = 4200 - Math.Min(i * 10, 800), Unidade = "MHz" },
+        new ValorSensor { Id = "cpu/load", Categoria = CategoriaSensor.Carga, Rotulo = "CPU Carga", TipoHardware = TipoHardware.Cpu, Valor = 100, Unidade = "%" },
     };
 }
 

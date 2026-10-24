@@ -3,6 +3,7 @@ using FlavosDiag.Core;
 using FlavosDiag.Core.Abstractions;
 using FlavosDiag.Core.Benchmark;
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Core.Monitor;
 
 namespace FlavosDiag.Workloads;
 
@@ -25,8 +26,28 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
     /// <summary>Teto obrigatório quando nenhum sensor de temperatura responde.</summary>
     public static readonly TimeSpan TetoSemSensor = TimeSpan.FromMinutes(2);
 
+    /// <summary>
+    /// Teto quando o técnico confirma explicitamente que quer testar sem sensor de temperatura.
+    /// Acima disso não vale a pena: sem proteção térmica, a informação ganha não paga o risco.
+    /// </summary>
+    public static readonly TimeSpan TetoSemSensorConfirmado = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Quantas amostras consecutivas acima do limite são necessárias para parar. Um pico isolado de
+    /// leitura não deve abortar um teste saudável; uma temperatura realmente alta se sustenta.
+    /// </summary>
+    public const int AmostrasAcimaDoLimiteParaParar = 3;
+
     /// <summary>Duração máxima aceita, para proteger o equipamento e o tempo do técnico.</summary>
     public static readonly TimeSpan DuracaoMaximaPermitida = TimeSpan.FromMinutes(60);
+
+    /// <summary>
+    /// Tempo máximo tolerado sem que o predicado de parada seja consultado. Acima disso o vigia
+    /// interrompe a carga: um teste sem ninguém avaliando a temperatura não tem proteção.
+    /// </summary>
+    public static readonly TimeSpan IntervaloMaximoSemVerificacao = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan PeriodoVigia = TimeSpan.FromSeconds(1);
 
     private readonly Func<IReadOnlyList<Func<ICargaCpu>>, ExecutorCarga> _criarExecutor;
 
@@ -62,7 +83,10 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
             ? null
             : "Nenhum sensor de temperatura respondeu: o teste é limitado a 2 minutos por segurança.";
 
-        var duracao = temSensor || solicitada <= TetoSemSensor ? solicitada : TetoSemSensor;
+        // Sem sensor, o teto é 2 min. O técnico pode estendê-lo confirmando na tela, mas nunca
+        // além do teto estendido — e o valor confirmado fica registrado no resultado.
+        var tetoSemSensor = configuracao.PermitirSemSensor ? TetoSemSensorConfirmado : TetoSemSensor;
+        var duracao = temSensor || solicitada <= tetoSemSensor ? solicitada : tetoSemSensor;
 
         var workers = Math.Max(1, threadsLogicas > 1 ? threadsLogicas : nucleosFisicos);
 
@@ -73,12 +97,41 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
         var amostrasTemperatura = 0;
         var instanteUltimaAmostra = TimeSpan.Zero;
         var jaAmostrou = false;
+        var amostrasAcimaDoLimite = 0;
         double? ultimaTemperatura = null;
+
+        // Marca de tempo compartilhada com o vigia: atualizada a cada consulta ao predicado.
+        long instanteUltimaVerificacao = 0;
 
         // A lista de cargas precisa ser a padrão: uma lista vazia faria o executor rodar zero cargas,
         // sem trabalho e sem nunca chamar o predicado de parada.
         var executor = _criarExecutor(MontadorCarga.Fabrica());
         var relogio = Stopwatch.StartNew();
+
+        // Rede de segurança independente da interface: a decisão de parada térmica é tomada aqui,
+        // no predicado, que roda em thread de trabalho. Se por algum motivo o predicado deixar de
+        // ser consultado (executor travado, bloqueio inesperado), este vigia corta a carga em vez
+        // de deixá-la rodando até o teto de duração.
+        using var vigia = new CancellationTokenSource();
+        using var vigiaRegistro = cancelamento.Register(() => vigia.Cancel());
+        using var relogioVigia = new Timer(
+            _ =>
+            {
+                try
+                {
+                    if (relogio.Elapsed.Ticks - Volatile.Read(ref instanteUltimaVerificacao) > IntervaloMaximoSemVerificacao.Ticks)
+                    {
+                        vigia.Cancel();
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // O teste já terminou; nada a fazer.
+                }
+            },
+            null,
+            PeriodoVigia,
+            PeriodoVigia);
 
         // O executor reporta ciclos/erros; nós enriquecemos com a temperatura mais recente.
         var progressoInterno = progresso is null
@@ -96,6 +149,9 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
             duracao,
             () =>
             {
+                // Sinaliza ao vigia que a proteção está viva e sendo avaliada.
+                Volatile.Write(ref instanteUltimaVerificacao, relogio.Elapsed.Ticks);
+
                 if (cancelamento.IsCancellationRequested)
                 {
                     pararPorUsuario = true;
@@ -122,26 +178,53 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                 }
 
                 var temperatura = TemperaturaDaCpu(amostra);
+                var leituraImplausivel = false;
                 if (temperatura is null)
                 {
-                    return false;
+                    // O classificador descarta tudo acima de 120 °C por não ser uma temperatura
+                    // plausível. Mas se a leitura crua do processador está acima de 120 °C, isso é
+                    // exatamente a hora de parar — não de "seguir sem leitura". Sem este caso, uma
+                    // leitura sustentada de 130 °C nunca dispararia a proteção.
+                    if (TemperaturaCruaAcimaDoFisico(amostra) is not { } crua)
+                    {
+                        return false;
+                    }
+
+                    // A parada usa o valor cru, mas ele NÃO entra nas estatísticas: 130 °C não é uma
+                    // medição, é um sensor em estado inválido. Registrá-lo como "máxima" colocaria um
+                    // número inventado no laudo.
+                    temperatura = crua;
+                    leituraImplausivel = true;
                 }
 
-                ultimaTemperatura = temperatura;
-                temperaturaMaxima = Math.Max(temperaturaMaxima, temperatura.Value);
-                somaTemperatura += temperatura.Value;
-                amostrasTemperatura++;
+                if (!leituraImplausivel)
+                {
+                    temperaturaMaxima = Math.Max(temperaturaMaxima, temperatura.Value);
+                    somaTemperatura += temperatura.Value;
+                    amostrasTemperatura++;
+                    ultimaTemperatura = temperatura;
+                }
 
+                // Exigir amostras consecutivas acima do limite evita que um pico isolado de leitura
+                // aborte um teste saudável. Os sentinelas (0, 255) já não chegam até aqui.
                 if (temperatura.Value >= limite)
                 {
-                    pararPorTemperatura = true;
-                    return true;
+                    amostrasAcimaDoLimite++;
+                    if (amostrasAcimaDoLimite >= AmostrasAcimaDoLimiteParaParar)
+                    {
+                        pararPorTemperatura = true;
+                        return true;
+                    }
+                }
+                else
+                {
+                    amostrasAcimaDoLimite = 0;
                 }
 
                 return false;
             },
             progressoInterno,
-            cancelamento).ConfigureAwait(false);
+            vigia.Token).ConfigureAwait(false);
 
         relogio.Stop();
 
@@ -149,9 +232,13 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
             ? MotivoParada.Temperatura
             : pararPorUsuario
                 ? MotivoParada.CanceladoPeloUsuario
-                : !temSensor && solicitada > TetoSemSensor
-                    ? MotivoParada.SemSensorTemperaturaLimite2Min
-                    : MotivoParada.ConcluidoPorTempo;
+
+                // O vigia cortou a carga porque a proteção deixou de ser avaliada.
+                : vigia.IsCancellationRequested && !cancelamento.IsCancellationRequested
+                    ? MotivoParada.Erro
+                    : !temSensor && solicitada > TetoSemSensor
+                        ? MotivoParada.SemSensorTemperaturaLimite2Min
+                        : MotivoParada.ConcluidoPorTempo;
 
         var texto = motivo switch
         {
@@ -159,6 +246,9 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                 $"Parado ao atingir {limite:0} °C (limite configurado).",
             MotivoParada.CanceladoPeloUsuario =>
                 "Parado a pedido do usuário.",
+            MotivoParada.Erro when vigia.IsCancellationRequested && !cancelamento.IsCancellationRequested =>
+                "Parado pela proteção: a verificação de temperatura deixou de responder. " +
+                "O resultado deste teste não deve ser usado como veredito.",
             MotivoParada.SemSensorTemperaturaLimite2Min =>
                 "Parado no teto de 2 minutos: não há sensor de temperatura para proteger o equipamento.",
             _ =>
@@ -300,18 +390,43 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
     }
 
     /// <summary>
-    /// Temperatura representativa da CPU: a maior leitura de temperatura de categoria CPU/placa.
-    /// Devolve <c>null</c> quando não há nenhuma (nunca zero, que seria uma leitura falsa).
+    /// Temperatura de <b>confiança alta</b> da CPU: sensor do próprio processador
+    /// (<see cref="TipoHardware.Cpu"/>) com <see cref="QualidadeSensor.Ok"/>, escolhido pelo
+    /// classificador. Devolve <c>null</c> quando não há nenhuma (nunca zero, que seria leitura falsa).
     /// </summary>
+    /// <remarks>
+    /// Antes esta função pegava a maior temperatura qualquer acima de zero — inclusive o sensor da
+    /// placa-mãe (SuperIO). Isso protegia o equipamento pelo sensor errado: a placa pode estar a
+    /// 40 °C enquanto o processador cozinha. Agora só o sensor do próprio componente conta para a
+    /// parada de segurança.
+    /// </remarks>
     public static double? TemperaturaDaCpu(AmostraSensores amostra)
     {
-        var temperaturas = amostra.Valores
-            .Where(v => v.Categoria == CategoriaSensor.Temperatura)
+        ArgumentNullException.ThrowIfNull(amostra);
+        return ClassificadorTemperatura.DaCpu(amostra, out _);
+    }
+
+    /// <summary>
+    /// Leitura de temperatura do processador acima do máximo físico plausível (> 120 °C).
+    /// Situação de emergência: o valor é alto demais para ser medido, e a única resposta segura é parar.
+    /// Sentinelas conhecidos (0, 255, -128, valores não numéricos) devolvem <c>null</c>.
+    /// </summary>
+    public static double? TemperaturaCruaAcimaDoFisico(AmostraSensores amostra)
+    {
+        ArgumentNullException.ThrowIfNull(amostra);
+
+        var acima = amostra.Valores
+            .Where(v => v.Categoria == CategoriaSensor.Temperatura &&
+                        v.TipoHardware == TipoHardware.Cpu &&
+                        v.Qualidade == QualidadeSensor.Ok &&
+                        !double.IsNaN(v.Valor) &&
+                        !double.IsInfinity(v.Valor) &&
+                        v.Valor > TemperaturaFisica.MaximoValidoCelsius &&
+                        v.Valor != 255)
             .Select(v => v.Valor)
-            .Where(v => v > 0 && v < 150)
             .ToList();
 
-        return temperaturas.Count == 0 ? null : temperaturas.Max();
+        return acima.Count == 0 ? null : acima.Max();
     }
 
     private static Leitura<double> ClockSustentado(Func<AmostraSensores?> leitura)

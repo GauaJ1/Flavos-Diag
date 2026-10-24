@@ -904,3 +904,199 @@ não uma falha do teste.
   a medir o quanto a região ficou avermelhada.
 - O guarda de clean room acusou `CpuZeroViraAusencia` por conter a substring `CpuZ`. Os métodos foram
   renomeados em vez de enfraquecer o guarda.
+---
+
+## Causa real da CPU sem leitura e proteção térmica no stress (24/10/2026)
+
+Base: 0.5.0, commit 8c7d807. Estado: **implementado, aguardando validação no hardware** do dono.
+
+O que esta fase corrige: a temperatura da CPU não era lida e o aplicativo não explicava por quê —
+e o stress rodava até 4 horas sem nenhuma proteção térmica quando isso acontecia.
+
+### Tarefa 1 — a sentinela é tratada na origem
+
+`TemperaturaFisica` (Core) é a regra única. Não é temperatura utilizável: `null`, `NaN`, `0`, `255`,
+qualquer valor fora de 1–120 °C, e sensor cujo `Min` é igual ao `Max` (nunca variou, portanto não
+está medindo). O provider classifica na leitura e grava cada um em `AmostraSensores.SemLeitura` com
+tipo de hardware, nome do componente, nome do sensor, valor bruto, mínimo, máximo e motivo em pt-BR.
+
+`ValorSensor` ganhou `TipoHardware`, `NomeHardware`, `NomeSensor` e `Qualidade`, todos com valor
+padrão para não quebrar amostras já serializadas.
+
+`ClassificadorTemperatura` escolhe primeiro por `TipoHardware` e só depois por nome. A versão
+anterior usava `Contains` no rótulo e confundia o sensor `Core` da GPU com o da CPU.
+
+### Tarefa 2 — a causa é diagnosticada, não adivinhada
+
+`DiagnosticoSensores` (Core, sem dependência de Windows) recebe os fatos por parâmetro e classifica
+nesta ordem: não elevado → pedir administrador; elevado sem PawnIO → driver ausente; elevado com
+PawnIO → a biblioteca reconheceu mas não leu; PawnIO não determinado → causa provável **sem
+afirmar**. Isso corrige o defeito de a tela dizer "requer elevação" quando o processo já estava
+elevado.
+
+Faixa de aviso em **Stress**, **CPU** e **Resumo**, com o comando `winget install namazso.PawnIO -e`
+e botão **Copiar**. O aplicativo **nunca** executa, baixa ou instala o driver (decisão P3).
+
+Exportação: botão "Exportar diagnóstico de sensores" em Configurações e argumento `--dump-sensores`.
+Grava `.json` e `.txt` com ambiente (elevação, PawnIO, versão do Windows e da biblioteca), CPU via
+WMI `Win32_Processor` e **todos** os sensores, inclusive os sem valor, com valor, mínimo e máximo.
+Sem números de série.
+
+### Tarefa 3 — proteção térmica no stress
+
+Três limites independentes:
+
+| Limite | Valor | Condição |
+| --- | --- | --- |
+| Parada automática | 100 °C (configurável 60–120) | temperatura com `Qualidade = Ok` ≥ limite por **3 amostras consecutivas** |
+| Teto sem sensor | 2 min (10 min só com confirmação) | CPU sem temperatura válida |
+| Teto de duração | 30 min (configurável até 120 min) | sempre; aviso quando falta 1 minuto |
+
+Mais: leitura crua acima de 120 °C é emergência e para o teste. O botão **Parar** continua sempre
+ativo, e o gráfico e o limiar de alerta (padrão 95 °C, só pinta) continuam como estavam.
+
+A decisão anterior (D65) de nunca parar sozinho foi **revista** — ver D72 em `docs/DECISOES.md`. O
+motivo: a justificativa original era que um sentinela de 255 °C abortaria um teste saudável, e isso
+já é resolvido na leitura; sem ela, o resultado prático era carga total por horas sem sensor nenhum.
+
+### Tarefa 4 — vereditos
+
+`Regras.Cpu`: sem temperatura de confiança alta do processador, o item térmico é **Inconclusivo**
+com a causa. Antes era **OK** — aprovava o equipamento justamente quando não havia como saber se
+ele esquenta demais.
+
+`Regras.Sensores`: nunca é OK só porque o disco, a placa ou a GPU têm temperatura. Cada componente é
+comparado com o seu próprio limite (`LimiteDoComponente`): CPU usa o limite configurado, GPU +5,
+armazenamento 60 °C, memória 85 °C.
+
+### Tarefa 5 — roteiro manual
+
+`docs/ROTEIRO-TESTE-MANUAL.md`, seção **4D**, com os cinco passos para o dono executar, incluindo a
+exportação antes e depois de instalar o PawnIO, a comparação com o monitor oficial e com a BIOS
+(diferença esperada de 1–2 °C) e a confirmação da parada automática e do teto de 2 minutos.
+
+### Verificação
+
+Build em Release com tratamento de aviso como erro:
+
+```
+dotnet build FlavosDiag.sln -c Release -warnaserror --nologo -v q
+    0 Aviso(s)
+    0 Erro(s)
+```
+
+Testes (runner próprio):
+
+```
+dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 188 | Aprovados: 188 | Falhas: 0 | Ignorados: 0
+```
+
+Pacotes vulneráveis:
+
+```
+dotnet list FlavosDiag.sln package --vulnerable --include-transitive
+O projeto fornecido `FlavosDiag.Core` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Workloads` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Reports` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Providers` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.App` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Tests` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+```
+
+Encoding dos arquivos:
+
+```
+dotnet run --project tools\ChecagemEncoding -c Debug
+Arquivos com problema: 0
+```
+
+Clean room:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build\cleanroom.ps1
+CLEAN ROOM: nenhum achado.
+```
+
+### Testes novos
+
+26 casos passaram a cobrir esta fase (`SensoresConfiabilidadeTests`, 23; `DiagnosticoSensoresDumpTests`, 3):
+
+- `0` com `Min = 0` e `Max = 0` é sentinela, e o sensor sem leitura consta na amostra;
+- `0`, `255`, `-128`, `121`, `-40` e `150` são rejeitados como temperatura;
+- sensor `Core` de GPU ou de placa **nunca** é escolhido como temperatura da CPU;
+- as quatro causas do diagnóstico, e a garantia de que nenhum texto pede elevação estando elevado;
+- parada em 3 amostras consecutivas; pico isolado não para; sentinela 255 não para;
+- teto de 2 min sem sensor; teto de duração; `Parar` sempre atendido;
+- leitura crua acima de 120 °C é emergência;
+- `Regras.Cpu` e `Regras.Sensores` sem temperatura de confiança → Inconclusivo, nunca OK;
+- cada componente avaliado pelo seu próprio limite;
+- a exportação grava `.json` e `.txt` com ambiente, causa, CPU e todos os sensores com mínimo e máximo.
+
+Nenhum teste liga carga real no processador: todos usam amostras construídas e relógio simulado.
+
+### Defeitos encontrados e corrigidos durante esta fase
+
+1. **`255` escapava da regra de sentinela.** A primeira versão só rejeitava `Min == Max` fora da
+   faixa, e `255` com `Min = 0`/`Max = 255` passava. Agora `0`, `255` e qualquer valor que não passe
+   em `Valida` são sentinela, independentemente de `Min`/`Max`. Encontrado por teste, não por leitura.
+2. **`--dump-sensores` não gravava nada.** Sem janela aberta, o modo de encerramento padrão do WPF
+   (`OnLastWindowClose`) encerrava o aplicativo assim que `OnStartup` retornava, matando a coleta
+   antes de escrever o arquivo. Corrigido com `OnExplicitShutdown` e encerramento explícito no fim.
+3. **O comando de exportação abria caixa de diálogo.** Um modal exige alguém clicando, o que impede
+   uso em script e em teste automatizado — justamente o objetivo do argumento. Passou a escrever os
+   caminhos na saída padrão.
+4. **A proteção nunca disparava acima de 120 °C.** O classificador descarta valores acima do máximo
+   físico, então uma leitura sustentada de 130 °C virava "sem leitura" e o teste continuava. Agora essa
+   leitura é tratada como emergência e para o teste.
+5. **O sensor falso dos testes não se identificava como CPU.** Com a seleção por `TipoHardware`, o
+   teste que verificava a parada por temperatura passou a falhar — o que expôs que o duplo de teste
+   não representava um coletor real. Corrigido no duplo, não na produção.
+
+### Limitação desta verificação
+
+O processo do aplicativo **não conseguiu gravar arquivos** neste ambiente de execução (erro
+`Access denied` em qualquer pasta, inclusive em `%TEMP%`), então o caminho `--dump-sensores` foi
+validado por teste automatizado e não por execução do `.exe`. A gravação de arquivo em si está
+coberta pelos testes de exportação, que passaram.
+
+A validação no hardware do dono (Ryzen 5 8500G) permanece **PENDENTE** — inclusive confirmar que o
+PawnIO é a causa da CPU sem leitura, que aqui aparece como ausente (`PawnIo.IsInstalled = false`).
+### Revisão adversarial da proteção (auditoria independente)
+
+Uma auditoria separada revisou só o caminho de proteção térmica, procurando buracos. Achou cinco
+problemas reais, todos corrigidos:
+
+1. **A parada dependia do tique da interface.** A decisão de parar era tomada no `DispatcherTimer`.
+   Se o dispatcher travasse, o token nunca era cancelado e a carga seguia até o teto. Agora o runner
+   avalia a temperatura por conta própria, no predicado que roda em thread de trabalho, e existe um
+   **vigia** (`IntervaloMaximoSemVerificacao`, 5 s): se o predicado deixar de ser consultado, a carga
+   é cortada e o resultado é registrado com `MotivoParada.Erro` em vez de virar veredito.
+2. **`Encerrar()` era código morto.** Fechar a janela deixava as threads de carga rodando, sem tela
+   para pará-las. Agora `MainViewModel.AoIniciar` liga `Window.Closing` e `SessionEnding` a
+   `EncerrarTudo`, que cancela e libera a sessão de sensores sem bloquear a interface (o runner pode
+   estar dentro de `Ler()`, segurando o bloqueio do provider).
+3. **A página CPU tinha um segundo caminho de estresse sem proteção.** Ela usava
+   `Principal.AmostrasSensores[^1]` como fonte de temperatura — um instantâneo congelado, copiado
+   antes do teste começar. O limite térmico nunca via a temperatura real, não havia teto sem sensor,
+   nem confirmação, nem botão Parar, e o token era `CancellationToken.None`. Agora abre a própria
+   sessão, usa o mesmo `LimiteParadaAutomaticaCelsius`, pede confirmação quando não há leitura,
+   respeita os tetos e tem botão **Parar**.
+4. **Leitura implausível contaminava o laudo.** O valor cru acima de 120 °C disparava a parada (o que
+   é desejado) mas também entrava em `TemperaturaMaximaCelsius` e na média, então o laudo podia
+   imprimir "Temperatura máxima de 130 °C" como se fosse uma medição. Agora esse valor só serve para
+   decidir a parada; não entra nas estatísticas.
+5. **Sensor oscilante escapava da contagem.** Uma leitura ausente zerava o contador de amostras
+   consecutivas, então um sensor alternando entre "muito quente" e "sem leitura" nunca chegava a três
+   — justamente quando o sensor está falhando. Agora só uma leitura **abaixo do limite** zera a
+   sequência.
+
+Também corrigidos por causa da auditoria: exceção dentro da verificação de limites agora **cancela**
+o teste em vez de deixar a carga rodando; o teto de duração na tela foi alinhado ao que o runner
+realmente aplica (60 min, não 120); os comentários e o texto da tela que diziam "não há tempo limite"
+foram atualizados; e a sobrecarga do classificador que escolhe por nome — sem tipo de hardware, e
+que misturaria o `Core` da GPU com o da CPU — foi marcada `[Obsolete]`, com os testes dela migrados
+para a API tipada.
+
+Dois testes novos cobrem os itens 5 e o vigia: `T3: sensor oscilando não zera a contagem de calor`
+e `T3: temperatura que cai de verdade zera a contagem`.

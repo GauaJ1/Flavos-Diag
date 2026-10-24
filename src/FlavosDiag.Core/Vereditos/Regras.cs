@@ -504,12 +504,31 @@ public static class Regras
     }
 
     // ---------------- Sensores ----------------
-    public static RespostaRegra Sensores(IReadOnlyList<ResumoSensor> resumos, double limiteTemperaturaCelsius, IReadOnlyList<AmostraSensores>? amostras = null)
+    /// <summary>
+    /// Avalia a categoria Sensores.
+    /// </summary>
+    /// <remarks>
+    /// Duas correções em relação à versão anterior:
+    /// <list type="number">
+    /// <item>Antes pegava a maior temperatura de <b>qualquer</b> componente e comparava com o limite
+    /// da CPU. Um HD a 45 °C com um limite de 90 °C virava "OK" — e a temperatura do processador
+    /// podia estar sem leitura, o que é justamente o defeito que se quer detectar.</item>
+    /// <item>Sem leitura da CPU, a categoria era concluída como OK porque "algum" sensor respondeu.
+    /// Agora o veredito é Inconclusivo e traz a causa.</item>
+    /// </list>
+    /// </remarks>
+    public static RespostaRegra Sensores(
+        IReadOnlyList<ResumoSensor> resumos,
+        double limiteTemperaturaCelsius,
+        IReadOnlyList<AmostraSensores>? amostras = null)
     {
         var temperaturas = resumos.Where(r => r.Categoria == CategoriaSensor.Temperatura).ToList();
+        var ultima = amostras?.LastOrDefault();
+        var diagnosticos = new List<string>();
+
         if (temperaturas.Count == 0)
         {
-            var causa = amostras?.LastOrDefault()?.CausaAusencia
+            var causa = ultima?.CausaAusencia
                         ?? "O hardware não expôs nenhum sensor de temperatura para esta execução.";
             return new RespostaRegra
             {
@@ -519,17 +538,58 @@ public static class Regras
             };
         }
 
-        var max = temperaturas.Max(r => r.Maximo);
-        var evidencias = temperaturas
-            .Select(r => new Evidencia { Titulo = r.Rotulo, Valor = $"{FormatacaoBr.Temperatura(r.Minimo)} a {FormatacaoBr.Temperatura(r.Maximo)}" })
+        // Temperatura da CPU só conta se vier do próprio processador.
+        var daCpu = temperaturas
+            .Where(r => r.TipoHardware == TipoHardware.Cpu && r.Qualidade == QualidadeSensor.Ok)
             .ToList();
 
-        if (max >= limiteTemperaturaCelsius + 10)
+        var evidencias = temperaturas
+            .Select(r => new Evidencia
+            {
+                Titulo = r.Rotulo,
+                Valor = $"{FormatacaoBr.Temperatura(r.Minimo)} a {FormatacaoBr.Temperatura(r.Maximo)} " +
+                        $"({r.TipoHardware})",
+            })
+            .ToList();
+
+        if (daCpu.Count == 0)
+        {
+            // Outros componentes podem até estar bem, mas isso não certifica a CPU. O veredito é
+            // Inconclusivo, com a causa — nunca OK por causa de quem não é o processador.
+            var causa = TemperaturaDaCpuAusente(ultima);
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Inconclusivo,
+                Resumo = "Temperatura da CPU sem leitura; a categoria Sensores não pode ser concluída. " + causa,
+                Evidencias = evidencias,
+                Limitacoes = new[] { causa },
+            };
+        }
+
+        // Cada componente é comparado com o seu próprio limite.
+        var falhas = new List<string>();
+        var atencoes = new List<string>();
+
+        foreach (var r in temperaturas.Where(r => r.Qualidade == QualidadeSensor.Ok))
+        {
+            var limite = LimiteDoComponente(r.TipoHardware, limiteTemperaturaCelsius);
+            var nome = string.IsNullOrWhiteSpace(r.Rotulo) ? r.Id : r.Rotulo;
+            if (r.Maximo >= limite + 10)
+            {
+                falhas.Add($"{nome}: {FormatacaoBr.Temperatura(r.Maximo)} (limite {FormatacaoBr.Temperatura(limite)})");
+            }
+            else if (r.Maximo >= limite)
+            {
+                atencoes.Add($"{nome}: {FormatacaoBr.Temperatura(r.Maximo)} (limite {FormatacaoBr.Temperatura(limite)})");
+            }
+        }
+
+        if (falhas.Count > 0)
         {
             return new RespostaRegra
             {
                 Veredito = Veredito.Falha,
-                Resumo = $"Temperatura máxima de {FormatacaoBr.Temperatura(max)} muito acima do limite de {FormatacaoBr.Temperatura(limiteTemperaturaCelsius)}.",
+                Resumo = "Temperatura muito acima do limite: " + string.Join("; ", falhas) + ".",
                 Evidencias = evidencias,
                 Recomendacoes = new[]
                 {
@@ -542,25 +602,75 @@ public static class Regras
             };
         }
 
-        if (max >= limiteTemperaturaCelsius)
+        if (atencoes.Count > 0)
         {
             return new RespostaRegra
             {
                 Veredito = Veredito.Atencao,
-                Resumo = $"Temperatura máxima de {FormatacaoBr.Temperatura(max)} atingiu o limite de {FormatacaoBr.Temperatura(limiteTemperaturaCelsius)}.",
+                Resumo = "Temperatura atingiu o limite do componente: " + string.Join("; ", atencoes) + ".",
                 Evidencias = evidencias,
             };
+        }
+
+        var resumo = $"Temperaturas dentro dos limites (CPU {FormatacaoBr.Temperatura(daCpu.Max(r => r.Maximo))}).";
+        if (diagnosticos.Count > 0)
+        {
+            resumo += " " + string.Join(" ", diagnosticos);
         }
 
         return new RespostaRegra
         {
             Veredito = Veredito.Ok,
-            Resumo = $"Temperaturas dentro do limite de {FormatacaoBr.Temperatura(limiteTemperaturaCelsius)}.",
+            Resumo = resumo,
             Evidencias = evidencias,
         };
     }
 
+    /// <summary>Limite térmico próprio de cada tipo de componente.</summary>
+    public static double LimiteDoComponente(TipoHardware tipo, double limiteCpu) => tipo switch
+    {
+        TipoHardware.Cpu => limiteCpu,
+
+        // A GPU esquenta mais que a CPU por projeto; sem limite próprio ela daria Atenção sempre.
+        TipoHardware.Gpu => limiteCpu + 5,
+        TipoHardware.Armazenamento => 60,
+        TipoHardware.Memoria => 85,
+
+        // Placa e SuperIO medem sensores dispersos; usa-se o mesmo limite da CPU como teto folgado.
+        _ => limiteCpu,
+    };
+
+    /// <summary>Explica a ausência de temperatura de confiança alta da CPU.</summary>
+    public static string TemperaturaDaCpuAusente(AmostraSensores? ultima)
+    {
+        if (ultima is null)
+        {
+            return "Nenhuma amostra de sensores foi coletada nesta sessão.";
+        }
+
+        var semLeitura = ultima.SemLeitura
+            .Where(s => s.Categoria == CategoriaSensor.Temperatura && s.TipoHardware == TipoHardware.Cpu)
+            .ToList();
+
+        if (semLeitura.Count > 0)
+        {
+            var detalhes = string.Join("; ", semLeitura.Select(s => $"{s.NomeSensor}: {s.Motivo}"));
+            return $"O processador expôs {semLeitura.Count} sensor(es) de temperatura sem leitura válida ({detalhes}).";
+        }
+
+        return "O sistema não expôs sensor de temperatura para o processador.";
+    }
+
     // ---------------- CPU ----------------
+    /// <summary>
+    /// Avalia a categoria CPU.
+    /// </summary>
+    /// <remarks>
+    /// O item térmico só existe com temperatura de <b>confiança alta</b> do próprio processador.
+    /// Antes, um teste sem nenhuma leitura de temperatura saía como OK — o equipamento passava no
+    /// item mais importante justamente quando não havia como saber se ele esquenta demais. Sem essa
+    /// leitura, o veredito é Inconclusivo e a causa é registrada no laudo.
+    /// </remarks>
     public static RespostaRegra Cpu(InventarioSistema inv, ResultadoEstresse? estresse, IReadOnlyList<ResumoSensor> sensores, double limiteCpu)
     {
         if (inv.Cpu.Nome.Ausente)
@@ -630,10 +740,50 @@ public static class Regras
             };
         }
 
+        // Chegou aqui: sem erros e sem throttling. O único item que ainda pode barrar o OK é o
+        // térmico, e ele exige leitura de confiança alta do próprio processador.
+        var temperaturaConfiavel = sensores
+            .Where(s => s.Categoria == CategoriaSensor.Temperatura &&
+                        s.TipoHardware == TipoHardware.Cpu &&
+                        s.Qualidade == QualidadeSensor.Ok)
+            .ToList();
+
+        if (!estresse.TemperaturaMaximaCelsius.Disponivel || temperaturaConfiavel.Count == 0)
+        {
+            var causa = estresse.TemperaturaMaximaCelsius.Causa ?? "Sem leitura de temperatura da CPU.";
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Inconclusivo,
+                Resumo = "Estabilidade de CPU não pôde ser concluída: " + causa +
+                         " Sem temperatura do processador não é possível afirmar que o resfriamento está adequado.",
+                Evidencias = evidencias,
+                Limitacoes = new[] { causa },
+                Recomendacoes = new[]
+                {
+                    new Recomendacao
+                    {
+                        Acao = "Executar como administrador e conferir o diagnóstico de sensores (Configurações). A temperatura da CPU é necessária para concluir o item térmico.",
+                        Prioridade = PrioridadeRecomendacao.Recomendada,
+                    },
+                },
+            };
+        }
+
+        var maxCpu = estresse.TemperaturaMaximaCelsius.Valor;
+        if (maxCpu >= limiteCpu)
+        {
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Atencao,
+                Resumo = $"Temperatura máxima de {FormatacaoBr.Temperatura(maxCpu)} atingiu o limite de {FormatacaoBr.Temperatura(limiteCpu)}.",
+                Evidencias = evidencias,
+            };
+        }
+
         return new RespostaRegra
         {
             Veredito = Veredito.Ok,
-            Resumo = "Teste de estabilidade concluído sem erros de cálculo e sem queda de clock.",
+            Resumo = "Teste de estabilidade concluído sem erros de cálculo, sem queda de clock e dentro do limite térmico.",
             Evidencias = evidencias,
         };
     }

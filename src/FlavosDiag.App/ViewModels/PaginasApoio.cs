@@ -179,6 +179,17 @@ public sealed partial class ConfigViewModel : PaginaBase
     [ObservableProperty]
     private bool _limiarAlertaValido = true;
 
+    /// <summary>Temperatura de confiança alta que faz o stress parar sozinho.</summary>
+    [ObservableProperty]
+    private string _limiteParadaTexto = "100";
+
+    /// <summary>Teto de duração do stress, em minutos (1 a 120).</summary>
+    [ObservableProperty]
+    private string _tetoDuracaoTexto = "30";
+
+    [ObservableProperty]
+    private string? _statusDump;
+
     protected override Task CarregarAsync()
     {
         var configuracao = Principal.Configuracao;
@@ -192,6 +203,8 @@ public sealed partial class ConfigViewModel : PaginaBase
         MascararSeriais = configuracao.MascararSeriais;
         PastaExportacao = configuracao.PastaExportacao;
         LimiarAlertaTexto = configuracao.LimiarAlertaTemperaturaCelsius.ToString("0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+        LimiteParadaTexto = configuracao.LimiteParadaAutomaticaCelsius.ToString("0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+        TetoDuracaoTexto = configuracao.TetoDuracaoStressMinutos.ToString(System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
         return Task.CompletedTask;
     }
 
@@ -217,6 +230,23 @@ public sealed partial class ConfigViewModel : PaginaBase
         }
 
         configuracao.LimiarAlertaTemperaturaCelsius = limiar;
+
+        if (!ValidarLimiteParada(out var limiteParada, out var erroParada))
+        {
+            Erro = erroParada;
+            Status = null;
+            return;
+        }
+
+        if (!ValidarTetoDuracao(out var teto, out var erroTeto))
+        {
+            Erro = erroTeto;
+            Status = null;
+            return;
+        }
+
+        configuracao.LimiteParadaAutomaticaCelsius = limiteParada;
+        configuracao.TetoDuracaoStressMinutos = teto;
 
         var aviso = Services.ConfiguracaoStore.Salvar(configuracao);
         Status = aviso ?? "Configurações salvas.";
@@ -254,6 +284,83 @@ public sealed partial class ConfigViewModel : PaginaBase
         LimiarAlertaValido = true;
         limiar = valor;
         return true;
+    }
+
+    /// <summary>
+    /// Teto máximo de duração, o mesmo aplicado por <c>CargaCpuRunner.DuracaoMaximaPermitida</c>.
+    /// </summary>
+    public const int MaximoTetoDuracaoMinutos = 60;
+
+    /// <summary>
+    /// O limite de parada precisa ser maior que o limiar de alerta: parar abaixo do aviso faria o
+    /// alerta nunca aparecer, e acima de 120 °C não protege nada.
+    /// </summary>
+    private bool ValidarLimiteParada(out double limite, out string? erro)
+    {
+        erro = null;
+        limite = 100;
+        var texto = LimiteParadaTexto?.Trim().Replace('.', ',');
+        if (!double.TryParse(texto, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.GetCultureInfo("pt-BR"), out var valor))
+        {
+            erro = "O limite de parada automática precisa ser um número (ex.: 100).";
+            return false;
+        }
+
+        if (valor < 60 || valor > 120)
+        {
+            erro = "O limite de parada automática precisa estar entre 60 e 120 °C.";
+            return false;
+        }
+
+        limite = valor;
+        return true;
+    }
+
+    private bool ValidarTetoDuracao(out int minutos, out string? erro)
+    {
+        erro = null;
+        minutos = 30;
+        var texto = TetoDuracaoTexto?.Trim();
+        if (!int.TryParse(texto, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.GetCultureInfo("pt-BR"), out var valor))
+        {
+            erro = "O teto de duração precisa ser um número inteiro de minutos (ex.: 30).";
+            return false;
+        }
+
+        // O limite da tela precisa ser o mesmo que o runner aplica; senão o técnico configura 90
+        // minutos, o teste para em 60 e a mensagem culpa o tempo, não a divergência.
+        if (valor < 1 || valor > MaximoTetoDuracaoMinutos)
+        {
+            erro = $"O teto de duração precisa estar entre 1 e {MaximoTetoDuracaoMinutos} minutos.";
+            return false;
+        }
+
+        minutos = valor;
+        return true;
+    }
+
+    /// <summary>Grava o diagnóstico técnico dos sensores (.json e .txt) na pasta de laudos.</summary>
+    [RelayCommand]
+    private async Task ExportarDiagnosticoSensoresAsync()
+    {
+        StatusDump = "Gerando diagnóstico…";
+        try
+        {
+            var pasta = string.IsNullOrWhiteSpace(PastaExportacao)
+                ? Services.ConfiguracaoStore.PastaDados
+                : PastaExportacao.Trim();
+
+            var dump = new Services.DiagnosticoSensoresDump(Principal.Servicos);
+            var (json, textoArquivo) = await dump.ExportarAsync(pasta, MascararSeriais);
+
+            StatusDump = "Gravado: " + json + " e " + System.IO.Path.GetFileName(textoArquivo);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            StatusDump = "Não foi possível gravar o diagnóstico: " + ex.Message;
+        }
     }
 
     [RelayCommand]

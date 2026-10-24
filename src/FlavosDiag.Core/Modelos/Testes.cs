@@ -26,6 +26,12 @@ public sealed record ConfiguracaoEstresse
     public double? LimiteTemperaturaCelsius { get; init; }
 
     public double? LimiteTemperaturaGpuCelsius { get; init; }
+
+    /// <summary>
+    /// O técnico confirmou explicitamente que quer seguir mesmo sem leitura de temperatura.
+    /// Sem isso, o teste para no teto de 2 minutos; com isso, vale o teto estendido.
+    /// </summary>
+    public bool PermitirSemSensor { get; init; }
 }
 
 public sealed record ResultadoEstresse

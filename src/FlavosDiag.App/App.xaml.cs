@@ -20,6 +20,18 @@ public partial class App : Application
         var configuracao = ConfiguracaoStore.Carregar();
         Servicos = Servicos.Criar(demonstracao);
 
+        // --dump-sensores: grava o diagnóstico e encerra, sem abrir a janela. Serve para o dono
+        // capturar a situação antes e depois de instalar o driver, e para suporte por arquivo.
+        if (e.Args.Any(a => a.Equals("--dump-sensores", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Sem janela, o modo padrão (OnLastWindowClose) encerraria o aplicativo assim que este
+            // método retornasse, matando a coleta antes de gravar o arquivo. O encerramento passa a
+            // ser explícito, feito por ExecutarDumpAsync quando terminar.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            _ = ExecutarDumpAsync(configuracao);
+            return;
+        }
+
         AplicarTema(configuracao.Tema != "Claro");
 
         var vm = new MainViewModel(Servicos, configuracao, demonstracao);
@@ -27,6 +39,36 @@ public partial class App : Application
         MainWindow = janela;
         vm.AoIniciar(janela);
         janela.Show();
+    }
+
+    private static async Task ExecutarDumpAsync(Configuracao configuracao)
+    {
+        var pasta = string.IsNullOrWhiteSpace(configuracao.PastaExportacao)
+            ? ConfiguracaoStore.PastaDados
+            : configuracao.PastaExportacao;
+
+        try
+        {
+            var dump = new DiagnosticoSensoresDump(Servicos);
+            var (json, texto) = await dump.ExportarAsync(pasta, configuracao.MascararSeriais);
+
+            // Argumento de linha de comando: os caminhos vão para a saída padrão, sem caixa de
+            // diálogo. Um modal exigiria alguém clicando, o que impede uso em script e em teste
+            // automatizado — e este comando existe justamente para ser repetível.
+            Console.Out.WriteLine("Diagnóstico de sensores gravado:");
+            Console.Out.WriteLine("  " + json);
+            Console.Out.WriteLine("  " + texto);
+            Console.Out.Flush();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine("Não foi possível gravar o diagnóstico de sensores: " + ex.Message);
+            Console.Error.Flush();
+        }
+        finally
+        {
+            Current.Shutdown();
+        }
     }
 
     /// <summary>Alterna claro/escuro. No escuro, aplica a sobreposição de cores do tema Flavos.</summary>

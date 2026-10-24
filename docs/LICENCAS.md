@@ -31,6 +31,19 @@ Data de verificação: 24/10/2026.
 ### 1.1 Transparência sobre pacotes consultados
 O pacote `DiskInfoToolkit` (MPL-2.0) foi **baixado e inspecionado apenas como metadado de licença**. Não foi desmontado nem depurado. A regra de clean room (proibição de engenharia reversa de qualquer ferramenta de diagnóstico) é respeitada: qualquer uso é apenas como dependência transitiva do monitor de sensores, nunca para implementar SMART.
 
+### 1.2 PawnIO — driver de terceiro **não redistribuído**
+
+| Item | Situação |
+|---|---|
+| O que é | Driver de kernel de terceiros, distribuído separadamente pelo projeto PawnIO, usado pela biblioteca de sensores para acessar sensores em algumas plataformas. |
+| Licença | **Termos próprios do projeto PawnIO.** Este documento **não declara** identificador de licença: a licença e os termos de uso precisam ser verificados no site oficial do projeto, `https://pawnio.eu`. |
+| Onde é usado | Fora do Flavos Diag, como dependência opcional do ambiente (`LibreHardwareMonitorLib`). O app não contém nenhum binário do driver. |
+| Como o Flavos Diag o trata | O app apenas **detecta** se o driver está instalado (presente, ausente ou desconhecido) e, quando a ausência é causa provável de falta de leitura, **exibe um comando sugerido** para o dono executar manualmente. Ver `DECISOES.md` D70 e D71. |
+
+O Flavos Diag **não redistribui, não empacota, não instala e não baixa** o PawnIO. Não há cópia do instalador em `licenses/`, no pacote portátil nem na pasta de distribuição. A responsabilidade de verificar a licença e os termos antes de instalar é de quem instala — o dono do computador.
+
+> A `LibreHardwareMonitorLib` informa, na própria documentação, que pode precisar desse driver para acessar sensores em algumas plataformas. Essa exigência é da biblioteca, não do Flavos Diag, e por isso o app se limita a reportar a ausência e a causa, sem tentar contorná-la.
+
 ## 2. QuestPDF Community License — condição de elegibilidade (IMPORTANTE)
 
 Texto verificado no pacote `LICENSE.md` (versão 3.0, vigente em 06/07/2026). Resumo fiel das cláusulas relevantes:
@@ -68,6 +81,7 @@ Texto verificado no pacote `LICENSE.md` (versão 3.0, vigente em 06/07/2026). Re
 - [x] CommunityToolkit.Mvvm MIT
 - [x] QuestPDF — condição de receita documentada
 - [x] LibreHardwareMonitorLib MPL-2.0 + dependências
+- [x] PawnIO — **não é dependência redistribuída**; termos próprios, sujeitos a verificação no site oficial (`https://pawnio.eu`) pelo dono. Ver 1.2.
 - [ ] smartctl (se usado na Fase 2) — GPL-2.0 + obrigações completas
 - [ ] Geist/Inter (Fase 5 — empacotamento de fonte)
 - [ ] CsWin32 (se usado na Fase 4)

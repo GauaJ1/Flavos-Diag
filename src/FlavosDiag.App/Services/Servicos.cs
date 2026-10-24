@@ -43,10 +43,22 @@ public sealed class Configuracao
     public int JanelaGraficoSegundos { get; set; } = 60;
 
     /// <summary>
-    /// Temperatura a partir da qual o gráfico de stress destaca a faixa de alerta. Não encerra o
-    /// teste — quem decide parar é o técnico; o destaque evita que ele só perceba depois.
+    /// Temperatura a partir da qual o gráfico de stress destaca a faixa de alerta. O destaque é
+    /// só visual; a parada automática usa <see cref="LimiteParadaAutomaticaCelsius"/>.
     /// </summary>
     public double LimiarAlertaTemperaturaCelsius { get; set; } = 95;
+
+    /// <summary>
+    /// Temperatura de confiança alta a partir da qual o stress para sozinho. Padrão 100 °C: acima
+    /// disso, manter carga total só faz sentido se alguém quiser queimar o equipamento de propósito.
+    /// </summary>
+    public double LimiteParadaAutomaticaCelsius { get; set; } = 100;
+
+    /// <summary>
+    /// Teto de duração do stress quando há leitura de temperatura. Padrão 30 minutos, ajustável até
+    /// 2 horas — mais que isso é tempo de técnico desperdiçado, não informação nova.
+    /// </summary>
+    public int TetoDuracaoStressMinutos { get; set; } = 30;
 
     [JsonIgnore]
     public IReadOnlyList<string> AlvosPingLista =>

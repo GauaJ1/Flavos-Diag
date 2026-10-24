@@ -25,6 +25,28 @@ public static class MonitorSensoresTests
     }
 
     /// <summary>
+    /// Monta uma amostra com o tipo de hardware explícito — é assim que o provider real entrega os
+    /// dados. Usar a sobrecarga por nome seria testar um caminho que o aplicativo não usa mais.
+    /// </summary>
+    private static FlavosDiag.Core.Modelos.AmostraSensores AmostraDe(
+        FlavosDiag.Core.Modelos.TipoHardware tipo,
+        params (string Nome, double Valor)[] sensores) => new()
+        {
+            Quando = DateTimeOffset.Now,
+            Valores = sensores.Select(s => new FlavosDiag.Core.Modelos.ValorSensor
+            {
+                Id = tipo + "/" + s.Nome,
+                Categoria = FlavosDiag.Core.Modelos.CategoriaSensor.Temperatura,
+                Rotulo = s.Nome,
+                Valor = s.Valor,
+                Unidade = "°C",
+                TipoHardware = tipo,
+                NomeSensor = s.Nome,
+                Qualidade = FlavosDiag.Core.Modelos.QualidadeSensor.Ok,
+            }).ToList(),
+        };
+
+    /// <summary>
     /// O caso desta máquina: o Ryzen expõe "Core (Tctl/Tdie)" mas devolve 0 sem elevação.
     /// Zero é sentinela, não temperatura — se virasse ponto no gráfico, a curva ficaria em 0 °C
     /// e pareceria uma leitura legítima de processador frio.
@@ -32,7 +54,7 @@ public static class MonitorSensoresTests
     private static Task CpuSentinelZeroViraAusencia()
     {
         var temperatura = ClassificadorTemperatura.DaCpu(
-            new[] { ("Core (Tctl/Tdie)", 0.0) },
+            AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Cpu, ("Core (Tctl/Tdie)", 0.0)),
             out var causa);
 
         Assert.True(temperatura is null, "0 °C na CPU precisa virar ausência de leitura");
@@ -42,7 +64,7 @@ public static class MonitorSensoresTests
 
     private static Task CpuSentinel255ViraAusencia()
     {
-        var temperatura = ClassificadorTemperatura.DaCpu(new[] { ("CPU Package", 255.0) }, out var causa);
+        var temperatura = ClassificadorTemperatura.DaCpu(AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Cpu, ("CPU Package", 255.0)), out var causa);
         Assert.True(temperatura is null, "255 °C é sentinela e não pode virar leitura");
         Assert.True(causa is not null, "precisa haver causa");
         return Task.CompletedTask;
@@ -50,7 +72,7 @@ public static class MonitorSensoresTests
 
     private static Task CpuValida()
     {
-        var temperatura = ClassificadorTemperatura.DaCpu(new[] { ("Core (Tctl/Tdie)", 62.4) }, out var causa);
+        var temperatura = ClassificadorTemperatura.DaCpu(AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Cpu, ("Core (Tctl/Tdie)", 62.4)), out var causa);
         Assert.True(Equals(62.4, temperatura), "leitura válida precisa passar");
         Assert.True(causa is null, "sem ausência não há causa");
         return Task.CompletedTask;
@@ -69,7 +91,7 @@ public static class MonitorSensoresTests
     private static Task SemSensorCpu()
     {
         var temperatura = ClassificadorTemperatura.DaCpu(
-            new[] { ("GPU Core", 45.0) },
+            AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Cpu, ("GPU Core", 45.0)),
             out var causa);
 
         Assert.True(temperatura is null, "sem sensor da CPU não há leitura");
@@ -79,8 +101,8 @@ public static class MonitorSensoresTests
 
     private static Task GpuValida()
     {
-        var sensores = new[] { ("GPU Core", 45.0), ("GPU VR SoC", 0.0) };
-        var temperatura = ClassificadorTemperatura.DaGpu(sensores, out var causa);
+        var amostra = AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Gpu, ("GPU Core", 45.0), ("GPU VR SoC", 0.0));
+        var temperatura = ClassificadorTemperatura.DaGpu(amostra, out var causa);
         Assert.True(Equals(45.0, temperatura), "GPU Core válido precisa ser escolhido");
         Assert.True(causa is null, "sem ausência não há causa");
         return Task.CompletedTask;
@@ -99,7 +121,8 @@ public static class MonitorSensoresTests
             ("AMD Radeon(TM) 740M Graphics — GPU VR SoC", 47.0),
         };
 
-        var temperatura = ClassificadorTemperatura.DaGpu(sensores, out var causa);
+        var temperatura = ClassificadorTemperatura.DaGpu(
+            AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Gpu, sensores), out var causa);
         Assert.True(Equals(48.0, temperatura), "o rótulo composto precisa ser reconhecido");
         Assert.True(causa is null, "havendo leitura não há causa");
         return Task.CompletedTask;
@@ -114,7 +137,8 @@ public static class MonitorSensoresTests
         };
 
         // Tctl = 0 é sentinela; o classificador precisa cair no próximo sensor válido.
-        var temperatura = ClassificadorTemperatura.DaCpu(sensores, out _);
+        var temperatura = ClassificadorTemperatura.DaCpu(
+            AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Cpu, sensores), out _);
         Assert.True(Equals(62.0, temperatura), "com Tctl inválido a leitura vem do pacote");
         return Task.CompletedTask;
     }
@@ -123,7 +147,8 @@ public static class MonitorSensoresTests
     {
         // Ordem invertida de propósito: o sensor do die precisa ganhar mesmo vindo depois.
         var sensores = new[] { ("CPU Package", 55.0), ("Core (Tctl/Tdie)", 61.0) };
-        var temperatura = ClassificadorTemperatura.DaCpu(sensores, out _);
+        var temperatura = ClassificadorTemperatura.DaCpu(
+            AmostraDe(FlavosDiag.Core.Modelos.TipoHardware.Cpu, sensores), out _);
         Assert.True(Equals(61.0, temperatura), "o sensor do die tem prioridade");
         return Task.CompletedTask;
     }

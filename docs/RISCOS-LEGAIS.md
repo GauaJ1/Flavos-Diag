@@ -49,9 +49,34 @@
 - Todas as licenças foram verificadas e estão em `docs/LICENCAS.md`. Revisar antes da distribuição se surgirem novas versões (versão pinada nos `.csproj`).
 - **Ação:** rodar `dotnet list package --include-transitive --vulnerable` na entrega e revisar dependências transitivas.
 
+## R11 — Driver de kernel de terceiro instalável (PawnIO) — REVISAR (decisão do dono)
+- O Flavos Diag **não empacota, não instala e não baixa** o PawnIO. Ele apenas detecta se o driver está presente e, quando a ausência é causa provável da falta de temperatura, exibe um comando sugerido (`winget install namazso.PawnIO -e`) com botão Copiar. **Quem decide instalar e quem executa o comando é o dono** do computador. Ver `DECISOES.md` D71 e `LICENCAS.md` 1.2.
+- Um driver de kernel tem acesso privilegiado ao sistema. Os termos e a licença do PawnIO são próprios do projeto e devem ser verificados no site oficial: `https://pawnio.eu`.
+- **Ação do dono:** ler os termos no site oficial antes de instalar; decidir se a instalação entra no procedimento de bancada e se o técnico precisa de autorização do cliente para isso.
+
+## R12 — Memória protegida (Isolamento de núcleo / HVCI) e antivírus — MONITORAR
+- Alguns drivers de kernel **não carregam** quando a integridade de memória (Isolamento de núcleo / HVCI) está habilitada no Windows, e drivers de terceiros podem ser sinalizados por software de segurança. Isso **precisa ser verificado pelo dono na própria máquina**; este documento **não afirma** que funciona nem que falha.
+- Mitigação: o app informa o estado do PawnIO como **presente, ausente ou desconhecido**, em vez de adivinhar. Um driver instalado que não carrega aparece como estado desconhecido, com a causa provável no texto, e não como "não instalado".
+- **Ação:** registrar o estado da integridade de memória e do antivírus na máquina de teste e anotar o resultado em `ROTEIRO-TESTE-MANUAL.md`.
+
+## R13 — Execução com privilégio de administrador — RESOLVIDO INTERNAMENTE
+- Para ler sensores, o app **pede** ao usuário que o reabra como administrador (percursos com `runas`, D24/D70). Ele **nunca se eleva sozinho e em silêncio**: a elevação é uma ação explícita do usuário, e recusá-la leva ao modo reduzido com a causa escrita na tela.
+- Instalar driver, executar o comando sugerido e baixar arquivos estão fora do que o app faz com qualquer nível de privilégio.
+
+## R14 — Diagnóstico de sensores exportado — REVISAR
+- O arquivo `.json`/`.txt` do "Exportar diagnóstico de sensores" (D74) contém modelo de hardware, versão do Windows, estado do PawnIO e **identificadores dos sensores**. Não contém números de série (os identificadores passam pelo mascaramento existente) nem dados pessoais.
+- O arquivo é gravado **localmente**, na pasta escolhida pelo técnico. Nada é enviado para fora. **Compartilhar o arquivo é escolha do dono.**
+- **Ação do dono:** decidir a política de retenção e para quem o arquivo pode ser enviado (ex.: suporte da biblioteca de sensores).
+
+## R15 — Estresse térmico em carga máxima — REVISAR
+- O estresse agora tem proteções automáticas (parada por temperatura de confiança alta, teto sem sensor, teto de duração — ver `DECISOES.md` D72). Ainda assim, rodar carga máxima **carrega risco físico** ao equipamento. Os limites são redes de segurança, **não garantias**: um sensor que não mede não protege, e é por isso que a ausência de leitura reduz o teste a 2 minutos em vez de liberá-lo.
+- **Ação do dono:** ver R7 (termo de consentimento). Os limites não substituem a autorização do dono do equipamento nem o acompanhamento do técnico.
+
 ## Itens a confirmar com o dono (checklist seguro)
 - [ ] R2 — elegibilidade QuestPDF (receita bruta < US$ 1M/ano).
 - [ ] R5 — certificado de assinatura de código.
 - [ ] R7 — termo de consentimento para estresse.
 - [ ] R8 — política de retenção de dados do cliente.
+- [ ] R11 — termos de licença do PawnIO verificados no site oficial e decisão sobre a instalação no procedimento de bancada.
+- [ ] R14 — política de retenção e compartilhamento do diagnóstico de sensores exportado.
 - [ ] Revisão jurídica geral do código e dos laudos.

@@ -1,0 +1,44 @@
+<UserControl x:Class="FlavosDiag.App.Views.Controles.FaixaDiagnosticoSensores"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border x:Name="Root" Style="{StaticResource Cartao}" Padding="16" Margin="0,0,0,14"
+            BorderBrush="{DynamicResource FlavosAtencao}" BorderThickness="1"
+            Visibility="Collapsed">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Path Style="{StaticResource Icone}" Stroke="{DynamicResource FlavosAtencao}" Margin="0,0,10,0"
+                      Data="{StaticResource IconeAviso}" />
+                <TextBlock Text="Temperatura sem leitura" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{DynamicResource FlavosTexto}" />
+            </StackPanel>
+
+            <TextBlock x:Name="TextoCausa" Text="{Binding Texto, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                       TextWrapping="Wrap" Margin="0,8,0,0"
+                       Foreground="{DynamicResource FlavosTextoSuave}" />
+
+            <StackPanel x:Name="BlocoComando" Margin="0,12,0,0" Visibility="Collapsed">
+                <TextBlock Text="Comando sugerido (o Flavos Diag não instala o driver):"
+                           Style="{StaticResource TextoSuave}" Margin="0,0,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="CampoComando" Style="{StaticResource CaixaTexto}" IsReadOnly="True"
+                             FontFamily="Consolas" AutomationProperties.Name="Comando sugerido de instalação"
+                             ToolTip="Confira o site oficial do projeto antes de instalar." />
+                    <Button Grid.Column="1" Style="{StaticResource BotaoSecundario}" Content="Copiar"
+                            Margin="8,0,0,0" Click="CopiarComando"
+                            AutomationProperties.Name="Copiar comando de instalação" />
+                </Grid>
+                <TextBlock x:Name="StatusCopia" Style="{StaticResource TextoSuave}" Margin="0,6,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Button Style="{StaticResource BotaoSecundario}" Content="Verificar novamente" Margin="0,12,0,0"
+                    HorizontalAlignment="Left" MinHeight="40"
+                    Command="{Binding ReverificarCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    AutomationProperties.Name="Verificar sensores novamente"
+                    ToolTip="Fecha e reabre a sessão de sensores" />
+        </StackPanel>
+    </Border>
+</UserControl>

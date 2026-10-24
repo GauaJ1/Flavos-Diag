@@ -1,3 +1,5 @@
+using FlavosDiag.Core.Modelos;
+
 namespace FlavosDiag.Core.Monitor;
 
 /// <summary>
@@ -5,26 +7,25 @@ namespace FlavosDiag.Core.Monitor;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Verificado nesta máquina (AMD Ryzen 5 8500G + Radeon 740M), pelo próprio coletor do app:
-/// a CPU expõe <c>Core (Tctl/Tdie)</c> e a GPU expõe <c>GPU Core</c> e <c>GPU VR SoC</c>. O nome do
-/// sensor é o único dado estável para distinguir os dois: o rótulo do hardware já vem como
-/// "AMD Ryzen …", que não serve para classificar.
+/// A escolha é por <see cref="TipoHardware"/> e só depois por nome. Antes era por
+/// <c>Contains</c> no rótulo, e isso escolhia errado: a GPU também expõe um sensor chamado
+/// <c>Core</c>, então a temperatura da placa podia ser lida como se fosse do processador.
 /// </para>
 /// <para>
-/// Nessa mesma máquina o sensor da CPU devolve <b>0</b> — o sentinela clássico de "não consegui ler".
-/// Tratar esse 0 como temperatura faria o gráfico desenhar uma linha reta em 0 °C, que parece uma
-/// leitura fria legítima. Aqui ele vira ausência com causa, e o gráfico mostra "sem leitura".
+/// O nome continua valendo como prioridade (o sensor do die <c>Tctl/Tdie</c> na CPU e
+/// <c>GPU Core</c> na placa), e <see cref="TemperaturaFisica.Valida"/> continua sendo a segunda
+/// barreira para qualquer valor que chegue aqui de outra fonte.
 /// </para>
 /// </remarks>
 public static class ClassificadorTemperatura
 {
-    public const double MinimoValidoCelsius = 1;
+    public const double MinimoValidoCelsius = TemperaturaFisica.MinimoValidoCelsius;
 
-    public const double MaximoValidoCelsius = 120;
+    public const double MaximoValidoCelsius = TemperaturaFisica.MaximoValidoCelsius;
 
     /// <summary>
-    /// Sensores que representam a CPU. Nomes verificados no coletor desta máquina; incluídos também
-    /// os equivalentes usuais de outras plataformas para o mesmo papel.
+    /// Sensores que representam a CPU, em ordem de preferência. Nomes verificados no coletor desta
+    /// máquina; incluídos também os equivalentes usuais de outras plataformas para o mesmo papel.
     /// </summary>
     private static readonly string[] NomesCpu =
     {
@@ -35,7 +36,7 @@ public static class ClassificadorTemperatura
         "Package",
     };
 
-    /// <summary>Sensores que representam a GPU.</summary>
+    /// <summary>Sensores que representam a GPU, em ordem de preferência.</summary>
     private static readonly string[] NomesGpu =
     {
         "GPU Core",
@@ -44,62 +45,115 @@ public static class ClassificadorTemperatura
         "GPU Temperature",
     };
 
-    /// <summary>
-    /// A leitura é utilizável? 0 e 255 são sentinelas de "sem dado"; negativos e valores acima de
-    /// 120 °C não são temperatura de componente em operação.
-    /// </summary>
-    public static bool Valida(double? celsius) =>
-        celsius is { } v && !double.IsNaN(v) && v >= MinimoValidoCelsius && v <= MaximoValidoCelsius;
+    /// <summary>Faixa utilizável de temperatura de componente em operação.</summary>
+    public static bool Valida(double? celsius) => TemperaturaFisica.Valida(celsius);
 
     /// <summary>
-    /// Escolhe a temperatura da CPU. Prefere o sensor do die (Tctl/Tdie); se ele não for válido,
-    /// tenta os demais. Devolve <c>null</c> com o motivo em <paramref name="causa"/> quando nenhum
-    /// sensor da CPU entregou valor utilizável.
+    /// Escolhe a temperatura da CPU a partir das leituras de sensores, considerando apenas o que
+    /// veio do componente do tipo CPU.
     /// </summary>
+    public static double? DaCpu(AmostraSensores amostra, out string? causa)
+    {
+        ArgumentNullException.ThrowIfNull(amostra);
+        return Escolher(amostra, TipoHardware.Cpu, NomesCpu, "CPU", out causa);
+    }
+
+    /// <summary>Mesma ideia para a GPU.</summary>
+    public static double? DaGpu(AmostraSensores amostra, out string? causa)
+    {
+        ArgumentNullException.ThrowIfNull(amostra);
+        return Escolher(amostra, TipoHardware.Gpu, NomesGpu, "GPU", out causa);
+    }
+
+    /// <summary>
+    /// Escolha a partir de pares simples (nome, valor), sem informação de hardware. Mantida para
+    /// chamadores que já têm só o nome; aqui não há como separar CPU de GPU pelo tipo.
+    /// </summary>
+    /// <remarks>
+    /// Prefira a sobrecarga que recebe <see cref="AmostraSensores"/>: sem o tipo do hardware, um
+    /// sensor chamado <c>Core</c> da GPU pode ser lido como temperatura do processador — que é
+    /// exatamente o defeito que a seleção por tipo corrige. Não usar na proteção térmica.
+    /// </remarks>
+    [Obsolete("Use a sobrecarga que recebe AmostraSensores: sem TipoHardware não dá para separar CPU de GPU.")]
     public static double? DaCpu(IEnumerable<(string Nome, double Valor)> sensores, out string? causa)
     {
-        causa = null;
-        var candidatos = sensores.Where(s => Combina(s.Nome, NomesCpu)).ToList();
-        if (candidatos.Count == 0)
-        {
-            causa = "o sistema não expôs sensor de temperatura para a CPU";
-            return null;
-        }
+        ArgumentNullException.ThrowIfNull(sensores);
+        return EscolherPorNome(sensores, NomesCpu, "CPU", out causa);
+    }
 
-        foreach (var c in OrdenarPorPreferencia(candidatos, NomesCpu))
+    /// <summary>Mesma ideia para a GPU.</summary>
+    [Obsolete("Use a sobrecarga que recebe AmostraSensores: sem TipoHardware não dá para separar CPU de GPU.")]
+    public static double? DaGpu(IEnumerable<(string Nome, double Valor)> sensores, out string? causa)
+    {
+        ArgumentNullException.ThrowIfNull(sensores);
+        return EscolherPorNome(sensores, NomesGpu, "GPU", out causa);
+    }
+
+    private static double? Escolher(
+        AmostraSensores amostra,
+        TipoHardware tipo,
+        string[] nomes,
+        string rotulo,
+        out string? causa)
+    {
+        causa = null;
+
+        var doTipo = amostra.Valores
+            .Where(v => v.Categoria == CategoriaSensor.Temperatura &&
+                        v.TipoHardware == tipo &&
+                        v.Qualidade == QualidadeSensor.Ok)
+            .Select(v => (Nome: v.NomeSensor ?? v.Rotulo, v.Valor))
+            .ToList();
+
+        if (doTipo.Count > 0)
         {
-            if (Valida(c.Valor))
+            var escolhido = EscolherPorNome(doTipo, nomes, rotulo, out causa);
+            if (escolhido is not null)
             {
-                return Math.Round(c.Valor, 1);
+                return escolhido;
             }
         }
 
-        var lidos = string.Join(", ", candidatos.Select(c => $"{c.Nome} = {c.Valor:0.#} °C"));
-        causa = $"o sensor da CPU devolveu valor inválido ({lidos}); 0 e 255 significam 'sem leitura'";
+        // Nada com leitura: existe sensor reconhecido desse tipo mas sem valor?
+        var semLeitura = amostra.SemLeitura
+            .Where(s => s.Categoria == CategoriaSensor.Temperatura && s.TipoHardware == tipo)
+            .ToList();
+
+        if (semLeitura.Count > 0)
+        {
+            var detalhes = string.Join("; ", semLeitura.Select(s => $"{s.NomeSensor} {s.Motivo}"));
+            causa = $"a {rotulo} tem {semLeitura.Count} sensor(es) de temperatura reconhecido(s), mas sem leitura: {detalhes}";
+            return null;
+        }
+
+        causa ??= $"o sistema não expôs sensor de temperatura para a {rotulo}";
         return null;
     }
 
-    /// <summary>Mesma ideia para a GPU: prefere <c>GPU Core</c>.</summary>
-    public static double? DaGpu(IEnumerable<(string Nome, double Valor)> sensores, out string? causa)
+    private static double? EscolherPorNome(
+        IEnumerable<(string Nome, double Valor)> sensores,
+        string[] nomes,
+        string rotulo,
+        out string? causa)
     {
         causa = null;
-        var candidatos = sensores.Where(s => Combina(s.Nome, NomesGpu)).ToList();
+        var candidatos = sensores.Where(s => Combina(s.Nome, nomes)).ToList();
         if (candidatos.Count == 0)
         {
-            causa = "o sistema não expôs sensor de temperatura para a GPU";
+            causa = $"o sistema não expôs sensor de temperatura para a {rotulo}";
             return null;
         }
 
-        foreach (var c in OrdenarPorPreferencia(candidatos, NomesGpu))
+        foreach (var c in OrdenarPorPreferencia(candidatos, nomes))
         {
-            if (Valida(c.Valor))
+            if (TemperaturaFisica.Valida(c.Valor))
             {
                 return Math.Round(c.Valor, 1);
             }
         }
 
         var lidos = string.Join(", ", candidatos.Select(c => $"{c.Nome} = {c.Valor:0.#} °C"));
-        causa = $"o sensor da GPU devolveu valor inválido ({lidos})";
+        causa = $"o sensor da {rotulo} devolveu valor inválido ({lidos}); 0 e 255 significam 'sem leitura'";
         return null;
     }
 
