@@ -141,6 +141,13 @@ public sealed class CargaCpuIndisponivel : ICargaCpuRunner
     public Task<ResultadoEstresse> EstressarAsync(ConfiguracaoEstresse configuracao, int nucleosFisicos, int threadsLogicas, Func<AmostraSensores?> leituraSensores, IProgress<ProgressoEstresse>? progresso, CancellationToken cancelamento) =>
         Task.FromException<ResultadoEstresse>(new NotSupportedException(_causa));
 
+    public Task<ResultadoBenchmarkCpu> BenchmarkAsync(
+        int threads,
+        IProgress<string>? progresso,
+        CancellationToken cancelamento,
+        Func<AmostraSensores?>? leituraSensores) =>
+        BenchmarkAsync(threads, progresso, cancelamento);
+
     public Task<ResultadoBenchmarkCpu> BenchmarkAsync(int threads, IProgress<string>? progresso, CancellationToken cancelamento) =>
         Task.FromException<ResultadoBenchmarkCpu>(new NotSupportedException(_causa));
 }

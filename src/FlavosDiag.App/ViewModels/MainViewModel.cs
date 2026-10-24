@@ -149,6 +149,25 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool Confirmar(string titulo, string texto) => SolicitarConfirmacao?.Invoke(titulo, texto) ?? false;
 
+    /// <summary>
+    /// Pede o aceite para ler os discos, uma vez por sessão. Sem aceite, o provider não abre o disco com
+    /// acesso de escrita e a saúde fica Inconclusivo com a causa (D78). Devolve <c>true</c> quando a
+    /// leitura está autorizada.
+    /// </summary>
+    public bool AutorizarLeituraDisco()
+    {
+        if (_servicos.LeituraDiscoAutorizada.Autorizada)
+        {
+            return true;
+        }
+
+        var aceitou = Confirmar(
+            "Ler a saúde dos discos",
+            FlavosDiag.Providers.Discos.DiscosWindowsProvider.AvisoLeituraDisco);
+        _servicos.LeituraDiscoAutorizada.Registrar(aceitou);
+        return aceitou;
+    }
+
     public void AoIniciar(Window janela)
     {
         Janela = janela;

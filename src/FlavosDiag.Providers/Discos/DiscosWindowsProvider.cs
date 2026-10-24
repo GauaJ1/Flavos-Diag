@@ -4,6 +4,7 @@ using System.Management;
 using FlavosDiag.Core;
 using FlavosDiag.Core.Abstractions;
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Providers.Abstractions;
 using FlavosDiag.Providers.Nativo;
 
 namespace FlavosDiag.Providers.Discos;
@@ -17,19 +18,68 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
 {
     private const string WorkspaceTemporario = "FlavosDiag";
 
+    private readonly IAmbiente? _ambiente;
+    private readonly IAutorizacaoLeituraDisco? _autorizacao;
+
+    /// <summary>
+    /// Provider sem trava de elevação/consentimento. Mantido para composição simples e testes; o
+    /// aplicativo usa o construtor com <see cref="IAmbiente"/> e <see cref="IAutorizacaoLeituraDisco"/>,
+    /// que é o que faz a leitura de pass-through depender de elevação e de aceite do usuário (D78).
+    /// </summary>
+    public DiscosWindowsProvider()
+    {
+    }
+
+    /// <param name="ambiente">Fonte da verdade sobre elevação do processo.</param>
+    /// <param name="autorizacao">Registro do aceite do usuário para ler o disco.</param>
+    public DiscosWindowsProvider(IAmbiente ambiente, IAutorizacaoLeituraDisco autorizacao)
+    {
+        _ambiente = ambiente;
+        _autorizacao = autorizacao;
+    }
+
     public string Nome => "Windows (armazenamento + SMART)";
+
+    /// <summary>
+    /// Pré-condições do pass-through conforme o estado atual. Sem ambiente/autorização injetados, a
+    /// leitura de pass-through fica <b>recusada</b> (falha fechada) — nunca "liberada por omissão".
+    /// </summary>
+    private RequisicaoDisco.Permissoes PermissoesAtuais => new(
+        ProcessoElevado: _ambiente?.EhAdministrador == true,
+        UsuarioAutorizouLeitura: _autorizacao?.Autorizada == true);
+
+    /// <summary>
+    /// Texto do aviso mostrado antes da leitura do disco. Diz, sem rodeio, que o disco só é lido.
+    /// </summary>
+    public const string AvisoLeituraDisco =
+        "O Flavos Diag vai consultar a saúde dos discos físicos deste computador.\n\n" +
+        "A consulta é SOMENTE LEITURA: o programa pede ao disco os dados de saúde (identificação e " +
+        "atributos SMART) e não grava nada no disco, não altera setores e não muda nenhuma configuração.\n\n" +
+        "A leitura exige permissão de administrador e pode levar alguns segundos em discos lentos ou " +
+        "com defeito. Ler um disco em estado crítico também o estressa — se o equipamento estiver " +
+        "apresentando falhas, faça backup antes e prefira interromper.\n\n" +
+        "Deseja consultar a saúde dos discos agora?";
+
+    private bool SemElevacao => _ambiente is not null && !_ambiente.EhAdministrador;
 
     public async Task<IReadOnlyList<DiscoInfo>> ListarAsync(CancellationToken cancelamento = default)
     {
+        var permissoes = PermissoesAtuais;
         var semElevacao = false;
-        var identificacoes = await Task.Run(() => IdentificarDiscos(out semElevacao), cancelamento);
+        var identificacoes = await Task.Run(() =>
+        {
+            var encontrados = IdentificarDiscos(out var semElevacaoDetectada);
+            semElevacao = semElevacaoDetectada;
+            return encontrados;
+        }, cancelamento);
+        semElevacao |= SemElevacao;
         var confiabilidade = await LerConfiabilidadeAsync(cancelamento);
 
         var lista = new List<DiscoInfo>(identificacoes.Count);
         foreach (var id in identificacoes)
         {
             cancelamento.ThrowIfCancellationRequested();
-            lista.Add(MontarDisco(id, confiabilidade.GetValueOrDefault(id.Numero), semElevacao));
+            lista.Add(MontarDisco(id, confiabilidade.GetValueOrDefault(id.Numero), semElevacao, permissoes));
         }
 
         return lista;
@@ -56,7 +106,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
             if (descritor is null && penalidade is null)
             {
                 // Os IOCTL de descritor falham justamente quando falta elevação.
-                using var teste = SmartAta.AbrirDisco(item.Numero, escrita: false, out var erro);
+                using var teste = RequisicaoDisco.AbrirSomenteLeitura(item.Numero, out var erro);
                 semElevacao |= erro is not null && erro.Contains("Acesso negado", StringComparison.Ordinal);
             }
 
@@ -193,7 +243,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
     {
         for (var n = 0; n < 64; n++)
         {
-            using var alca = SmartAta.AbrirDisco(n, escrita: false, out var erro);
+            using var alca = RequisicaoDisco.AbrirSomenteLeitura(n, out var erro);
             // Para no primeiro índice inexistente; "acesso negado" significa que o disco existe.
             if (erro is not null && erro.Contains("não encontrado", StringComparison.Ordinal))
             {
@@ -206,7 +256,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
 
     private static (string? Modelo, string? Firmware, string? Serial, byte Barramento)? LerDescritor(int numero)
     {
-        using var dispositivo = SmartAta.AbrirDisco(numero, escrita: false, out _);
+        using var dispositivo = RequisicaoDisco.AbrirSomenteLeitura(numero, out _);
         if (dispositivo is null || dispositivo.IsInvalid)
         {
             return null;
@@ -279,7 +329,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
 
     private static long LerTamanho(int numero)
     {
-        using var dispositivo = SmartAta.AbrirDisco(numero, escrita: false, out _);
+        using var dispositivo = RequisicaoDisco.AbrirSomenteLeitura(numero, out _);
         if (dispositivo is null || dispositivo.IsInvalid)
         {
             return 0;
@@ -307,7 +357,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
 
     private static long? LerPenalidadeBusca(int numero)
     {
-        using var dispositivo = SmartAta.AbrirDisco(numero, escrita: false, out _);
+        using var dispositivo = RequisicaoDisco.AbrirSomenteLeitura(numero, out _);
         if (dispositivo is null || dispositivo.IsInvalid)
         {
             return null;
@@ -353,7 +403,11 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
 
     // ------------------------------------------------------------------ saúde
 
-    private DiscoInfo MontarDisco(IdentificacaoDispositivo id, ConfiabilidadeWindows? confiabilidade, bool semElevacao)
+    private static DiscoInfo MontarDisco(
+        IdentificacaoDispositivo id,
+        ConfiabilidadeWindows? confiabilidade,
+        bool semElevacao,
+        RequisicaoDisco.Permissoes permissoes)
     {
         var limitacoes = new List<DadoAusente>();
         var fontes = new List<FonteSaudeDisco>();
@@ -368,9 +422,21 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
         }
 
         var eNvme = id.TipoBarramento == ApiNativas.BusTypeNvme;
-        if (eNvme)
+        if (!permissoes.Permitido)
         {
-            var log = SmartNvme.Ler(id.Numero, out var motivo);
+            // Leitura de pass-through recusada por falta de elevação ou de aceite do usuário (D78):
+            // o disco não é aberto. A limitação é registrada com a causa e o veredito fica Inconclusivo —
+            // nunca OK, porque nada foi lido.
+            limitacoes.Add(new DadoAusente(
+                eNvme ? "Log de saúde NVMe" : "Atributos SMART (ATA)",
+                !permissoes.ProcessoElevado
+                    ? "Leitura não executada: o processo não está elevado. O Windows só repassa a leitura " +
+                      "SMART/NVMe para administrador. O veredito fica Inconclusivo."
+                    : "Leitura não executada: o usuário não autorizou a leitura do disco. O veredito fica Inconclusivo."));
+        }
+        else if (eNvme)
+        {
+            var log = SmartNvme.Ler(id.Numero, permissoes, out var motivo);
             if (log is not null)
             {
                 fontes.Add(FonteSaudeDisco.Nvme);
@@ -383,7 +449,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
         }
         else
         {
-            var bruto = SmartAta.LerSmartAta(id.Numero);
+            var bruto = SmartAta.LerSmartAta(id.Numero, permissoes);
             if (bruto.Sucesso && bruto.Dados512 is not null)
             {
                 var interpretados = SmartAta.Interpretar(bruto.Dados512);
@@ -445,9 +511,11 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
         {
             limitacoes.Add(new DadoAusente(
                 "Saúde do disco",
-                semElevacao
-                    ? "Sem elevação: o Windows só libera a leitura SMART/NVMe para administrador. Execute o aplicativo como administrador para diagnosticar a saúde. O veredito fica Inconclusivo."
-                    : "Nenhuma fonte de saúde respondeu para este disco. O veredito fica Inconclusivo."));
+                !permissoes.UsuarioAutorizouLeitura
+                    ? "A leitura do disco não foi autorizada. Autorize a consulta de saúde para diagnosticar. O veredito fica Inconclusivo."
+                    : semElevacao
+                        ? "Sem elevação: o Windows só libera a leitura SMART/NVMe para administrador. Execute o aplicativo como administrador para diagnosticar a saúde. O veredito fica Inconclusivo."
+                        : "Nenhuma fonte de saúde respondeu para este disco. O veredito fica Inconclusivo."));
         }
 
         return new DiscoInfo

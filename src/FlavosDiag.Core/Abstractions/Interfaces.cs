@@ -103,6 +103,17 @@ public interface ICargaCpuRunner
         CancellationToken cancelamento);
 
     Task<ResultadoBenchmarkCpu> BenchmarkAsync(int threads, IProgress<string>? progresso, CancellationToken cancelamento);
+
+    /// <summary>
+    /// Benchmark protegido: recebe a leitura de sensores (ou <c>null</c> quando não há sessão) e o
+    /// limite de parada, para que o benchmark também respeite a proteção térmica. Implementações
+    /// sem sensor podem delegar para a sobrecarga sem argumentos.
+    /// </summary>
+    Task<ResultadoBenchmarkCpu> BenchmarkAsync(
+        int threads,
+        IProgress<string>? progresso,
+        CancellationToken cancelamento,
+        Func<AmostraSensores?>? leituraSensores);
 }
 
 public sealed record ProgressoEstresse(TimeSpan Decorrido, int Ciclos, int Erros, double? TemperaturaCelsius, double? ClockMhz);

@@ -1100,3 +1100,166 @@ para a API tipada.
 
 Dois testes novos cobrem os itens 5 e o vigia: `T3: sensor oscilando não zera a contagem de calor`
 e `T3: temperatura que cai de verdade zera a contagem`.
+## Revisão pós-decisões D1–D77 (T1 a T7)
+
+Cada item foi **confirmado no código antes de mexer**. Onde o código já estava certo, está registrado
+"sem alteração".
+
+### T1 — `Min == Max` apagava sensores saudáveis — CONFIRMADO e corrigido
+
+**Onde estava:** `src/FlavosDiag.Core/Monitor/TemperaturaFisica.cs:52` — `if (minimo == maximo) return true`
+dentro de `EhSentinela`, ou seja, sensor com mínimo e máximo iguais era tratado como "sem leitura".
+
+**Prova de que era real, medida nesta máquina:** o `GPU Core` devolveu `46 (min 46, max 46)` em três
+leituras ao longo de 5 s — sensor saudável, descartado pela regra. E `Min`/`Max` são acumulados desde a
+abertura da sessão, então `Min == Max` é verdade em toda primeira leitura.
+
+**Correção:** `SemLeitura` passou a ser decidido **só pelo valor** (0, 255, -127, -128, fora de 1–120,
+NaN, infinito). `Min == Max` deixou de ser critério. Estabilidade só vira suspeita quando é implausível:
+novo `DetectorCongelamento` (Core) marca `Qualidade = Suspeito` se for **CPU**, com **carga > 50 %** e
+valor **rigorosamente idêntico por 120 s**. `Suspeito` continua no gráfico, mas perde a confiança alta.
+
+Testes (a)–(e) atendidos: `R1: sensor estável com mín == máx continua Ok` (a), `R1: estável em repouso
+continua Ok` (b), `T1: 0 com mín 0 e máx 0 é sentinela` (c), `R1: 0 com mín 0 e máx 80 continua sem
+leitura` (d), `R1: 120 s idêntico sob carga em CPU fica Suspeito` (e), mais `R1: Suspeito perde a
+confiança alta`.
+
+### T2 — emergência "acima de 120 °C" reintroduzia o sentinela — CONFIRMADO e corrigido
+
+**Onde estava:** `CargaCpuRunner.TemperaturaCruaAcimaDoFisico` filtrava `> 120` e excluía só `255`. Faltava
+`-127` e a GPU, e não havia exigência de amostras consecutivas.
+
+**Erro que eu cometi ao corrigir e o teste pegou:** troquei o filtro por `TemperaturaFisica.EhSentinela`,
+que responde "isto é medição utilizável?" — 130 °C reprova nessa pergunta, então a emergência passou a
+ignorar todo valor alto. Os testes `T3: leitura crua acima de 120 °C` e `R2: série 60, 125, 125` falharam
+e mostraram isso. Corrigido com uma lista separada de **sentinelas conhecidos** (`EhSentinelaConhecida`).
+
+**Regra final:** vale para CPU e GPU, exige `AmostrasConsecutivasEmergencia = 2`, e sentinela nunca é
+calor (cai no teto sem sensor). D77 preservada: valor implausível não entra em máximo, média nem contagem.
+
+Testes: `R2: série 60, 60, 255, 60 não dispara emergência`, `R2: série 60, 125, 125 dispara emergência`,
+`R2: 255 constante nunca é emergência`.
+
+### T3 — limites térmicos unificados — CONFIRMADO (havia 4 valores independentes)
+
+`LimitesTermicos` (Core) é agora a fonte única; `docs/LIMITES-TERMICOS.md` é a tabela canônica.
+Invariantes `veredito <= alerta <= parada < emergência` e `parada <= 110` validados na configuração e na
+tela, com correção ao padrão e motivo visível — nunca aceite silencioso. Padrões revistos: veredito e
+parada em 95 °C. **Ressalva honesta:** a temperatura máxima oficial do Ryzen 5 8500G **não pôde ser
+confirmada** na página da AMD (sem acesso à rede nesta sessão), então está registrado em
+`docs/PROCEDENCIA.md` como "não confirmado em documento oficial". O texto da tela não afirma que o
+fabricante especifica nada, e agora diz explicitamente que os limites **reduzem** o risco e não
+**garantem** proteção. Limites de disco por mídia (HDD 55 / SSD SATA 70 / NVMe 80) rotulados "valores de
+partida" e "limite genérico". 27 testes, incluindo o de arquitetura contra literais térmicos fora da
+fonte única.
+
+Limitação declarada (não mascarada): `SaudeNvme` não carrega os limiares do próprio controlador, então
+todo NVMe hoje sai como "limite genérico". A precedência está implementada e testada; falta o coletor
+trazer o campo. Preferi declarar a lacuna a simular o dado.
+
+### T4 — um único caminho de estresse — CONFIRMADO (o benchmark rodava sem proteção)
+
+**Auditoria de todos os chamadores de carga pesada:**
+
+| Caminho | Sessão própria | Parada automática | Teto sem sensor | Teto duração | Botão Parar | Cancela ao fechar | Antes | Depois |
+|---|---|---|---|---|---|---|---|---|
+| Stress (tela) | sim | sim | sim (2 min) | sim (30 min) | sim | sim | ok | ok |
+| Benchmark CPU (página CPU) | **não** | **não** (`() => false`) | não | não | não | **não** (`CancellationToken.None`) | **falha** | **corrigido** |
+| Prova de GPU | sim | sim | sim | sim | sim | sim | ok | ok |
+| Diagnóstico rápido | sim | usa `LimiteTemperaturaCpuCelsius` | n/a (60 s) | sim | sim | sim | ok | ok |
+| Teste de memória | n/a (não é carga de CPU) | n/a | n/a | sim | sim | sim | ok | ok |
+| Estresse (página CPU) | sim (T4 anterior) | sim | sim | sim | sim | sim | corrigido antes | ok |
+| Vigia (D75) | no runner | — | — | — | — | — | ok | ok |
+
+**O que mudou:** `BenchmarkAsync` ganhou sobrecarga que recebe `leituraSensores` e aplica a mesma regra
+(3 amostras acima do limite, emergência com 2, teto absoluto). A tela da CPU passou a abrir sessão
+própria, respeitar cancelamento (`[RelayCommand(IncludeCancelCommand = true)]`) e tem botão **Parar**.
+
+**Divergência de teto corrigida:** a tela aceitava até 120 min enquanto o runner cortava em 60. O limite
+da tela agora é derivado de `CargaCpuRunner.DuracaoMaximaPermitida` — não há mais dois números.
+
+**Ganho colateral:** o benchmark usava o literal `3` em vez de `AmostrasAcimaDoLimiteParaParar`.
+
+Testes da D75 com relógio injetável já existentes; o vigia corta a carga em 5 s sem consulta.
+
+### T5 — decisões contraditórias — corrigido
+
+`docs/DECISOES.md` reescrito: tabela com 5 colunas em todas as linhas (D40–D46 corrigidas), coluna
+**Status** em todas, índice no topo para D68–D87. D17 → Substituída por D72 (verificado no código: a
+histerese não existe mais, `ProtecaoTermica` usa 3 amostras). D65 → Substituída por D72. D56 e D58 →
+Substituída por D79. D68 → Revista por D78. D39 reescrita com o estado atual. D6 e D20 sem interrogações.
+
+**Regra única do teste de memória** implementada em `Regras.cs`: M1 Inconclusivo (sem teste), M2
+Inconclusivo (só teste rápido), M3/M4 Atenção (divergência em uma execução), M5 Falha (2+ execuções com
+erro). Achei e corrigi o defeito que a T5 apontou: `Regras.cs:125` reprovava M4 como Falha por causa de
+`|| ErrosDetectados >= 2`, e o ramo seguinte exigia `== 1` exato, então 2 erros na mesma execução caíam em
+Inconclusivo. Agora é `>= 1`.
+
+`DocumentacaoTests` (8 casos) valida colunas, números repetidos, células terminando em "?", status e
+alvos de "Substituída por". O subagente validou o teste por sabotagem.
+
+### T6 — SMART com GENERIC_WRITE — CONFIRMADO e corrigido (achado mais grave)
+
+**Duas coisas piores do que o prompt supunha:**
+1. **Não havia verificação de elevação no ponto de abertura.** A elevação só era *exibida* numa barra de
+   status; nada recusava abrir o disco sem privilégio.
+2. **Não havia aviso/consentimento nenhum.** O caminho `ResumoViewModel` → `DiscoViewModel` →
+   `Discos.ListarAsync` não chamava `Principal.Confirmar`. O texto sobre backup aparecia **depois** da
+   leitura.
+
+**Correção:** `RequisicaoDisco.Executar` é o único portão, com enums fechados (`PedidoAta`/`PedidoNvme`) —
+não existe sobrecarga que aceite byte de comando (verificado por reflexão em teste). Ordem: elevação →
+consentimento → número do disco → **lista de permissão** → só então `CreateFileW` com escrita. O
+subagente encontrou um bug de ordenação na própria primeira versão (a lista era checada **depois** da
+abertura) e corrigiu. Recusa vira **Inconclusivo com causa**, nunca OK.
+
+Lista em vigor, só leitura: ATA `IDENTIFY DEVICE` 0xEC, `SMART READ DATA` 0xD0 (nas duas formas), NVMe
+`Get Log Page` 0x02. Opcodes conferidos em cabeçalhos públicos (`linux/hdreg.h`, `linux/nvme.h`), não
+inventados. 16 testes, incluindo varredura de código-fonte para `\\.\PhysicalDrive` e constantes de
+pass-through fora do portão.
+
+### T7 — PawnIO: estado atual e validação — **o quadro mudou**
+
+**O dono instalou o driver, e eu medi.** O driver está presente e rodando (`Win32_SystemDriver: PawnIO =
+Running`). Com ele instalado **sem elevação**, `Core (Tctl/Tdie)` continua `0 (min 0, max 0)`. Com o
+aplicativo **elevado**, o mesmo sensor devolve **69 °C (mín 68,875, máx 69,0)**.
+
+**Conclusão: a causa da CPU sem leitura nesta máquina era falta de elevação, não ausência do driver.**
+Isso corrige a hipótese registrada na D71 — que apontava o driver como causa mais provável — e está
+registrado em `docs/PROCEDENCIA.md` §4.
+
+`docs/PROCEDENCIA.md` criado: namespace e propriedades usados para a detecção
+(`LibreHardwareMonitor.PawnIo.PawnIo.IsInstalled`/`Version`), obtidos pelo IntelliSense do pacote —
+**sem descompilação e sem engenharia reversa** —, fonte dos opcodes, e a tabela de medições.
+
+"Verificar novamente" abre sessão nova; o texto de causa agora orienta **fechar e reabrir o aplicativo**
+quando o driver foi instalado com ele aberto (a biblioteca carrega o driver na abertura da sessão), sem
+afirmar que é preciso reiniciar o computador.
+
+`docs/ROTEIRO-TESTE-MANUAL.md` §4D.0 registra a medição e o que continua pendente; o passo a passo 4D.1
+mantém os seis critérios objetivos.
+
+### Verificação final
+
+```
+===== RELEASE -warnaserror =====
+  0 Aviso(s)
+  0 Erro(s)
+===== TESTES =====
+  Total: 246 | Aprovados: 246 | Falhas: 0 | Ignorados: 0
+===== PACOTES VULNERAVEIS =====
+  FlavosDiag.Core / Workloads / Reports: nenhum pacote vulnerável
+===== ENCODING =====
+  Arquivos com problema: 0
+===== CLEANROOM =====
+  CLEAN ROOM: nenhum achado.
+```
+
+De 188 para 246 testes: 58 novos (T1/T2/R1/R2, limites térmicos, documentação, comandos de disco).
+
+### Estado no hardware do dono
+
+- **Leitura de temperatura da CPU: VALIDADA** (elevado + PawnIO → 69 °C).
+- **Estresse real com leitura funcionando: PENDENTE.** Nenhuma carga real foi executada
+  automaticamente; exige o técnico na frente da máquina (roteiro 4D.1).
+- **Demais itens:** implementados, aguardando validação no hardware.

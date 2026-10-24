@@ -18,6 +18,7 @@ namespace FlavosDiag.Providers.Sensores;
 public sealed class SensoresHardwareProvider : ISensorProvider
 {
     private readonly object _trava = new();
+    private readonly DetectorCongelamento _detector = new();
     private Computer? _computador;
     private List<ValorSensor> _disponiveis = new();
     private bool _aberto;
@@ -164,9 +165,7 @@ public sealed class SensoresHardwareProvider : ISensorProvider
             try
             {
                 var leitura = LerTudo();
-                _semLeitura = leitura.SemLeitura;
-
-                return new AmostraSensores
+                var amostra = new AmostraSensores
                 {
                     Quando = DateTimeOffset.Now,
                     Valores = leitura.Valores,
@@ -175,6 +174,24 @@ public sealed class SensoresHardwareProvider : ISensorProvider
                         ? "Nenhum sensor devolveu valor nesta leitura."
                         : null,
                 };
+
+                // Sensor de CPU que ficou idêntico por minutos com a máquina sob carga é suspeito:
+                // o valor continua valendo para o gráfico, mas deixa de ser confiança alta.
+                var congelados = _detector.Avaliar(amostra);
+                if (congelados.Count > 0)
+                {
+                    amostra = amostra with
+                    {
+                        Valores = amostra.Valores
+                            .Select(v => congelados.Contains(v.Id)
+                                ? v with { Qualidade = QualidadeSensor.Suspeito }
+                                : v)
+                            .ToList(),
+                    };
+                }
+
+                _semLeitura = leitura.SemLeitura;
+                return amostra;
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {

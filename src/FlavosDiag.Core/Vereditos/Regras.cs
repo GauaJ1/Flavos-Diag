@@ -1,4 +1,5 @@
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Core.Monitor;
 
 namespace FlavosDiag.Core.Vereditos;
 
@@ -120,10 +121,13 @@ public static class Regras
 
         evidencias.AddRange(EvidenciasTeste(teste));
 
-        // 4. Duas ou mais execuções com erro (ou duas ou mais divergências) confirmam o defeito.
-        if (teste.ExecucoesComErro >= 2 || teste.ErrosDetectados >= 2)
+        // 4. A confirmação depende de o defeito se repetir em EXECUÇÕES distintas, não de quantas
+        // palavras divergiram. Duas palavras erradas na mesma passada são um evento, não dois: pode
+        // ser um bit preso num endereço, que um segundo teste confirma ou descarta. Contar
+        // divergências aqui transformava um único tropeço em "troque o módulo".
+        if (teste.ExecucoesComErro >= 2)
         {
-            var execucoes = Math.Max(teste.ExecucoesComErro, 1);
+            var execucoes = teste.ExecucoesComErro;
             return new RespostaRegra
             {
                 Veredito = Veredito.Falha,
@@ -143,14 +147,16 @@ public static class Regras
             };
         }
 
-        // 3. Uma divergência: pode ser falso positivo ou defeito intermitente.
-        if (teste.ErrosDetectados == 1)
+        // 3. Divergência em uma única execução: pode ser falso positivo ou defeito intermitente.
+        // Vale para qualquer quantidade de divergências nessa passada — duas palavras erradas no
+        // mesmo teste continuam sendo um evento, e o que decide é repetir.
+        if (teste.ErrosDetectados >= 1)
         {
             return new RespostaRegra
             {
                 Veredito = Veredito.Atencao,
-                Resumo = "O teste de memória encontrou uma única divergência. Repita o teste: um acerto isolado pode ser " +
-                         "falso positivo ou defeito intermitente, e só uma nova execução mostra se o erro se repete.",
+                Resumo = "O teste de memória encontrou divergência em uma única execução. Repita o teste: um acerto isolado " +
+                         "pode ser falso positivo ou defeito intermitente, e só uma nova execução mostra se o erro se repete.",
                 Evidencias = evidencias,
                 Recomendacoes = new[]
                 {
@@ -339,6 +345,15 @@ public static class Regras
         var ata = saude.AtributosAta.ToDictionary(a => a.Id, a => a.Bruto);
         long Bruto(int id) => ata.TryGetValue(id, out var v) ? v : -1;
 
+        // Limite térmico deste disco pela própria mídia: um HDD trabalha bem abaixo do que um NVMe
+        // suporta, e um limite único para os dois aprovava mídia mecânica quente demais. O NVMe é
+        // identificado pela presença do log de saúde, que só existe nesse barramento. Quando o disco
+        // informar o próprio limiar, ele é preferido e a fonte é registrada — enquanto o modelo não
+        // carrega esse campo, o padrão vale e sai rotulado como "limite genérico".
+        var limiteDisco = LimitesTermicos.LimiteDoArmazenamentoComProcedencia(
+            d.Midia.Disponivel ? d.Midia.Valor : TipoMidia.Desconhecido,
+            nvme: saude.Fontes.Contains(FonteSaudeDisco.Nvme) || saude.Nvme is not null);
+
         if (saude.Fontes.Contains(FonteSaudeDisco.SmartAta))
         {
             CheckFalha(5, "setores realocados");
@@ -366,9 +381,9 @@ public static class Regras
             // de trabalho: nesses casos não há o que avisar. Sem esta checagem, um sensor mudo (255)
             // viraria "temperatura 255 °C" e o disco seria reprovado por um dado que não existe.
             var tempBruta = (int)(Bruto(194) & 0xFF);
-            if (FaixaTemperatura.Valida(tempBruta) && tempBruta >= 60)
+            if (FaixaTemperatura.Valida(tempBruta) && tempBruta >= limiteDisco.Celsius)
             {
-                atencao.Add($"temperatura {tempBruta} °C");
+                atencao.Add($"temperatura {tempBruta} °C ({limiteDisco.Descrever()})");
             }
         }
 
@@ -400,9 +415,9 @@ public static class Regras
                 atencao.Add($"espaço reservado disponível {nvme.EspacoDisponivelPercentual.Valor} %");
             }
 
-            if (nvme.TemperaturaCelsius.Valor >= 60)
+            if (nvme.TemperaturaCelsius.Valor >= limiteDisco.Celsius)
             {
-                atencao.Add($"temperatura {nvme.TemperaturaCelsius.Valor} °C");
+                atencao.Add($"temperatura {nvme.TemperaturaCelsius.Valor} °C ({limiteDisco.Descrever()})");
             }
 
             evidencias.Add(new Evidencia
@@ -574,7 +589,7 @@ public static class Regras
         {
             var limite = LimiteDoComponente(r.TipoHardware, limiteTemperaturaCelsius);
             var nome = string.IsNullOrWhiteSpace(r.Rotulo) ? r.Id : r.Rotulo;
-            if (r.Maximo >= limite + 10)
+            if (r.Maximo >= limite + LimitesTermicos.MargemFalhaSobreOLimiteCelsius)
             {
                 falhas.Add($"{nome}: {FormatacaoBr.Temperatura(r.Maximo)} (limite {FormatacaoBr.Temperatura(limite)})");
             }
@@ -626,19 +641,16 @@ public static class Regras
         };
     }
 
-    /// <summary>Limite térmico próprio de cada tipo de componente.</summary>
-    public static double LimiteDoComponente(TipoHardware tipo, double limiteCpu) => tipo switch
-    {
-        TipoHardware.Cpu => limiteCpu,
-
-        // A GPU esquenta mais que a CPU por projeto; sem limite próprio ela daria Atenção sempre.
-        TipoHardware.Gpu => limiteCpu + 5,
-        TipoHardware.Armazenamento => 60,
-        TipoHardware.Memoria => 85,
-
-        // Placa e SuperIO medem sensores dispersos; usa-se o mesmo limite da CPU como teto folgado.
-        _ => limiteCpu,
-    };
+    /// <summary>
+    /// Limite térmico próprio de cada tipo de componente.
+    /// </summary>
+    /// <remarks>
+    /// O cálculo mora em <see cref="LimitesTermicos.LimiteDoComponente"/>, que é a fonte única dos
+    /// números. Esta sobrecarga continua existindo para não quebrar chamadores e para manter o nome
+    /// que o laudo já usa; os valores não são repetidos aqui.
+    /// </remarks>
+    public static double LimiteDoComponente(TipoHardware tipo, double limiteCpu) =>
+        LimitesTermicos.LimiteDoComponente(tipo, limiteCpu);
 
     /// <summary>Explica a ausência de temperatura de confiança alta da CPU.</summary>
     public static string TemperaturaDaCpuAusente(AmostraSensores? ultima)

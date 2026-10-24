@@ -18,7 +18,7 @@ public static class RegrasMemoriaTests
         ("Regras memória: teste NaoExecutado é Inconclusivo", TesteNaoExecutadoInconclusivo),
         ("Regras memória: teste sem divergência é Inconclusivo, nunca OK", TesteSemErroInconclusivo),
         ("Regras memória: uma divergência é Atenção e manda repetir", UmaDivergenciaAtencao),
-        ("Regras memória: duas divergências é Falha", DuasDivergenciasFalha),
+        ("Regras memória: duas divergências na mesma execução é Atenção", DuasDivergenciasAtencao),
         ("Regras memória: duas execuções com erro é Falha", DuasExecucoesComErroFalha),
         ("Regras memória: menos de 4 GiB com teste limpo é Atenção", MenosDe4GiBComTesteAtencao),
         ("Regras memória: menos de 4 GiB sem teste continua Inconclusivo", MenosDe4GiBSemTesteInconclusivo),
@@ -73,11 +73,15 @@ public static class RegrasMemoriaTests
         return Task.CompletedTask;
     }
 
-    private static Task DuasDivergenciasFalha()
+    /// <summary>
+    /// Duas palavras divergentes na MESMA execução são um evento só, não dois: pode ser um bit preso
+    /// num endereço. A regra unificada manda repetir antes de condenar o módulo.
+    /// </summary>
+    private static Task DuasDivergenciasAtencao()
     {
         var r = Regras.Memoria(Memoria(16 * UmGiB), Teste(status: StatusTesteMemoria.Erro, erros: 2, execucoes: 1));
 
-        Assert.Equal(Veredito.Falha, r.Veredito);
+        Assert.Equal(Veredito.Atencao, r.Veredito);
         Assert.NotEmpty(r.Recomendacoes);
         return Task.CompletedTask;
     }

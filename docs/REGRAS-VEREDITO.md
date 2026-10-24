@@ -40,16 +40,46 @@ Algoritmo (`VereditoConsolidador.Agregar`):
 - Caso contrário ⇒ **OK**.
 - O teste rápido interno **não** altera o veredito de inventário. Ele tem regra própria (3.2.1) porque responde a uma pergunta diferente: "a memória grava e devolve o que foi gravado?".
 
-#### 3.2.1 Memória — teste rápido de padrões
+#### 3.2.1 Memória — teste rápido de padrões (regra única)
 
-| Situação | Veredito | Texto no laudo |
-|---|---|---|
-| Nada foi medido (memória livre ilegível, falta de memória, cancelado antes de concluir um padrão) | **Inconclusivo** | "Não foi possível testar a memória: <causa>." |
-| Nenhuma divergência nos padrões testados | **Inconclusivo** | "Nenhuma divergência nos padrões testados. Isso não prova que a memória está perfeita: é um teste rápido, não um teste de estabilidade prolongado." |
-| Uma divergência | **Atenção** | "Uma única divergência. Repita o teste antes de condenar o módulo." |
-| Divergências em padrões distintos (duas execuções seguidas) | **Falha** | "Divergências em padrões distintos indicam defeito na memória: troque o módulo e teste novamente." |
+Esta é a **única** regra da memória para o teste rápido. Ela substitui as formulações antigas das decisões
+D38, D56 e D58 (ver D79 em `DECISOES.md`). A unidade de contagem é a **execução**: cada padrão aplicado ao
+buffer na mesma rodada do teste é uma execução independente. `ErrosDetectados` conta palavras divergentes e
+`ExecucoesComErro` conta padrões que divergiram; a regra usa a segunda contagem, porque duas palavras erradas
+no mesmo padrão são uma única evidência de defeito, não duas.
+
+| # | Caso | Entradas (`BytesTestados`, `ExecucoesComErro`) | Veredito | Justificativa |
+|---|---|---|---|---|
+| M1 | Zero erros, sem nenhum teste executado (só inventário) | `0`, `0` (ou `ResultadoTesteMemoria` ausente, ou `Status = NaoExecutado`) | **Inconclusivo** + recomendação de executar o teste | Inventário diz quanto há instalado, não se os módulos retêm dados. Sem gravar e reler, nada foi medido; aprovar aqui seria afirmar o que ninguém verificou. |
+| M2 | Zero erros, só o teste rápido (sem divergência em nenhum padrão) | `> 0`, `0` | **Inconclusivo** + recomendação do teste de boot completo | Um teste de segundos que cobre parte da memória livre não sustenta "a memória está boa". O teste rápido sem erro **nunca** vira OK; ele só descarta a evidência de defeito. |
+| M3 | 1 erro (uma execução com divergência) | `> 0`, `1` | **Atenção** + repetir o teste | Uma divergência isolada pode ser defeito intermitente ou interferência de outro programa, overclock ou evento isolado. Não basta para condenar o módulo, mas também não pode ser ignorada. |
+| M4 | 2 erros no mesmo padrão (2+ palavras divergentes, 1 execução com erro) | `> 0`, `1` | **Atenção** + repetir o teste | O defeito apareceu uma única vez, ainda que em vários pontos do mesmo padrão. A repetição é o que separa defeito de evento isolado — a segunda execução é a evidência que falta. |
+| M5 | 2 erros em padrões distintos (2+ execuções com divergência) | `> 0`, `≥ 2` | **Falha** + trocar o módulo e testar novamente | Dois padrões independentes falharam: não é um evento isolado nem dependência de um padrão específico. A memória não está retendo o que foi gravado. |
+
+> **Leitura com atenção:** o ponto 4 (`ErrosDetectados ≥ 2`) **não** é usado para Falha. Antes desta regra o
+> código tratava 2 ou mais palavras divergentes como Falha, mesmo dentro de uma única execução; isso conflitava
+> com o caso M4 acima.
 
 Regra de ouro desta categoria: **teste rápido sem erro nunca vira OK.** Um OK afirmaria que a memória está boa, e um teste de segundos em um buffer não sustenta essa afirmação — o teste de boot completo é o único que cobre toda a memória física em milhares de passadas.
+
+Fora do teste, a categoria ainda aplica o inventário (seção 3.2) nos casos M1 e M2: total abaixo de 4 GiB ou
+módulo com capacidade ilegível viram **Atenção** mesmo com o teste rápido limpo, porque ali o motivo é o
+inventário, não o teste.
+
+> **PENDENTE — divergência entre este documento e o código (não corrigida).** `Regras.Memoria`, em
+> `src/FlavosDiag.Core/Vereditos/Regras.cs:125`, usa `teste.ExecucoesComErro >= 2 || teste.ErrosDetectados >= 2`
+> e portanto **reprova o caso M4** (2 palavras divergentes em um único padrão) como Falha, enquanto a tabela
+> acima manda Atenção. Os casos M1, M2, M3 e M5 batem com o código. A correção exige remover o termo
+> `|| teste.ErrosDetectados >= 2` da condição e ajustar o teste `Regras memória: duas divergências é Falha`
+> (`tests/FlavosDiag.Tests/RegrasMemoriaTests.cs:76-83`), que trava o comportamento atual. Isso muda
+> comportamento de veredito e ficou registrado aqui, não alterado.
+
+> **Fonte do padrão de `ExecucoesComErro`.** O campo do record tem padrão `1`
+> (`src/FlavosDiag.Core/Modelos/Testes.cs:149`), herdado de chamadores antigos que só criavam o resultado
+> quando havia erro. Isso é compatibilidade de serialização: `TesteMemoriaRunner` sempre preenche o campo com a
+> contagem real de padrões com divergência (`src/FlavosDiag.Workloads/TesteMemoriaRunner.cs:403`), então a regra
+> acima nunca depende do padrão. Nenhuma configuração de usuário controla esse valor; não há campo
+> `ExecucoesComErro` em `Configuracao`.
 
 Tamanho do teste (decisão própria, em `PROCEDENCIA.md` P3-09a): 50 % da memória física **livre**, teto de 2 GiB, piso de 256 MiB. Cobertura = bytes testados / RAM total, sempre exibida junto do veredito para o técnico saber o que foi realmente coberto.
 
@@ -106,6 +136,31 @@ Fontes: inventário + resultado do último estresse registrado na sessão + temp
 - ≥ 1 item **Pendente** (não preenchido) ⇒ **Inconclusivo**.
 - Todos OK/Não se aplica ⇒ **OK**.
 
+### 3.10 Parada automática do stress (não é veredito, é limite de segurança)
+
+A D17 pedia parada com **2 amostras consecutivas ≥ limite, com histerese**. O que está em vigor é a D72: a
+contagem é de **3** amostras e **não há histerese na direção contrária**.
+
+| Situação | Efeito no contador de calor | Onde no código |
+|---|---|---|
+| Leitura de confiança alta ≥ limite | incrementa | `src/FlavosDiag.Core/Monitor/ProtecaoTermica.cs:66-76` |
+| Leitura de confiança alta < limite | **zera** (qualquer valor abaixo, não "abaixo de limite − histerese") | `src/FlavosDiag.Core/Monitor/ProtecaoTermica.cs:77-81` |
+| Leitura ausente ou sentinela | **mantém** (não zera, não incrementa) | `src/FlavosDiag.Core/Monitor/ProtecaoTermica.cs:86-89` |
+| Contador atinge 3 | para, motivo `Temperatura` | `src/FlavosDiag.Core/Monitor/ProtecaoTermica.cs:25,69` |
+
+Detalhes que não mudam o comportamento, mas confundem na leitura do código:
+
+- `CargaCpuRunner.AmostrasAcimaDoLimiteParaParar = 3` (`src/FlavosDiag.Workloads/CargaCpuRunner.cs:43`) repete
+  o valor e **é usada** na parada do stress (`CargaCpuRunner.cs:234`). O caminho de parada do **benchmark**
+  (`CargaCpuRunner.cs:372`) escreve o literal `3` em vez de usar a constante: mesmo valor, mesma regra, mas
+  mudar a constante não muda o benchmark.
+- `CargaCpuRunner.AmostrasConsecutivasEmergencia = 2` (`CargaCpuRunner.cs:57`) é a contagem da **emergência**
+  para leitura crua acima de 120 °C, não a da parada por temperatura medida. As duas contagens diferentes são
+  intencionais (ver D72).
+- `CargaCpuRunner.DuracaoMaximaPermitida = 60 min` (`CargaCpuRunner.cs:46`) corta o teto de 120 min que a D72 e
+  `Configuracao.TetoDuracaoStressMinutos` (`src/FlavosDiag.App/Services/Servicos.cs:70`, padrão 30) permitem:
+  o campo de configuração aceita até 120, mas a carga nunca passa de 60.
+
 ## 4. Tabela de testes obrigatórios (fixtures)
 
 | Cenário | Esperado |
@@ -125,3 +180,8 @@ Fontes: inventário + resultado do último estresse registrado na sessão + temp
 | Lista vazia de categorias | Inconclusivo (geral) |
 | Falha + OK + Inconclusivo | Falha (geral) |
 | OK + Inconclusivo | Inconclusivo (geral) |
+| Memória: sem teste executado (M1) | Inconclusivo |
+| Memória: teste rápido sem divergência (M2) | Inconclusivo |
+| Memória: 1 execução com divergência (M3) | Atenção + repetir |
+| Memória: 2 palavras divergentes no mesmo padrão (M4) | Atenção + repetir |
+| Memória: 2 execuções com divergência (M5) | Falha + trocar o módulo |

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Core.Monitor;
 
 namespace FlavosDiag.App.ViewModels;
 
@@ -174,14 +175,14 @@ public sealed partial class ConfigViewModel : PaginaBase
     /// em vez de aceitar silenciosamente um valor absurdo.
     /// </summary>
     [ObservableProperty]
-    private string _limiarAlertaTexto = "95";
+    private string _limiarAlertaTexto = TextoNumero(LimitesTermicos.AlertaVisualCelsius);
 
     [ObservableProperty]
     private bool _limiarAlertaValido = true;
 
     /// <summary>Temperatura de confiança alta que faz o stress parar sozinho.</summary>
     [ObservableProperty]
-    private string _limiteParadaTexto = "100";
+    private string _limiteParadaTexto = TextoNumero(LimitesTermicos.ParadaAutomaticaCelsius);
 
     /// <summary>Teto de duração do stress, em minutos (1 a 120).</summary>
     [ObservableProperty]
@@ -222,21 +223,14 @@ public sealed partial class ConfigViewModel : PaginaBase
         configuracao.MascararSeriais = MascararSeriais;
         configuracao.PastaExportacao = PastaExportacao.Trim();
 
-        if (!ValidarLimiarAlerta(out var limiar, out var erroLimiar))
+        if (!ValidarLimitesTermicos(out var limiar, out var limiteParada, out var erroLimites))
         {
-            Erro = erroLimiar;
+            Erro = erroLimites;
             Status = null;
             return;
         }
 
         configuracao.LimiarAlertaTemperaturaCelsius = limiar;
-
-        if (!ValidarLimiteParada(out var limiteParada, out var erroParada))
-        {
-            Erro = erroParada;
-            Status = null;
-            return;
-        }
 
         if (!ValidarTetoDuracao(out var teto, out var erroTeto))
         {
@@ -257,65 +251,67 @@ public sealed partial class ConfigViewModel : PaginaBase
     /// O limiar precisa estar dentro da faixa de temperatura utilizável (1–120 °C). Fora disso o
     /// destaque nunca apareceria ou apareceria sempre, e o técnico pensaria que o gráfico falhou.
     /// </summary>
-    private bool ValidarLimiarAlerta(out double limiar, out string? erro)
+    /// <remarks>
+    /// A faixa e a relação com os outros limites vêm de <see cref="LimitesTermicos"/>. A tela valida
+    /// os dois campos de uma vez porque as invariantes são <b>entre</b> eles: um alerta de 96 °C é
+    /// aceitável ou não dependendo da parada escolhida ao lado.
+    /// </remarks>
+    private bool ValidarLimitesTermicos(out double alerta, out double parada, out string? erro)
     {
         erro = null;
-        limiar = 95;
+        alerta = LimitesTermicos.AlertaVisualCelsius;
+        parada = LimitesTermicos.ParadaAutomaticaCelsius;
+        LimiarAlertaValido = false;
 
-        var texto = LimiarAlertaTexto?.Trim().Replace('.', ',');
-        if (!double.TryParse(
-                texto,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.GetCultureInfo("pt-BR"),
-                out var valor))
+        if (!LerNumero(LimiarAlertaTexto, out var valorAlerta))
         {
-            LimiarAlertaValido = false;
             erro = "O limiar de alerta precisa ser um número (ex.: 95).";
             return false;
         }
 
-        if (valor < 1 || valor > 120)
+        if (!LerNumero(LimiteParadaTexto, out var valorParada))
         {
-            LimiarAlertaValido = false;
-            erro = "O limiar de alerta precisa estar entre 1 e 120 °C.";
+            erro = "O limite de parada automática precisa ser um número (ex.: 95).";
+            return false;
+        }
+
+        var validado = LimitesTermicos.Validar(
+            LimitesTermicos.VereditoCpuCelsius,
+            valorAlerta,
+            valorParada);
+
+        if (validado.Corrigido)
+        {
+            // Recusa em vez de aceitar o número corrigido em silêncio: quem digitou precisa saber
+            // que o valor na tela não é o que vai valer depois de salvar.
+            erro = validado.MotivosTexto;
             return false;
         }
 
         LimiarAlertaValido = true;
-        limiar = valor;
+        LimiteParadaValido = true;
+        alerta = validado.AlertaVisualCelsius;
+        parada = validado.ParadaAutomaticaCelsius;
         return true;
     }
 
-    /// <summary>
-    /// Teto máximo de duração, o mesmo aplicado por <c>CargaCpuRunner.DuracaoMaximaPermitida</c>.
-    /// </summary>
-    public const int MaximoTetoDuracaoMinutos = 60;
+    [ObservableProperty]
+    private bool _limiteParadaValido = true;
+
+    private static bool LerNumero(string? texto, out double valor) =>
+        double.TryParse(
+            texto?.Trim().Replace('.', ','),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.GetCultureInfo("pt-BR"),
+            out valor);
+
+    private static string TextoNumero(double valor) =>
+        valor.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
 
     /// <summary>
-    /// O limite de parada precisa ser maior que o limiar de alerta: parar abaixo do aviso faria o
-    /// alerta nunca aparecer, e acima de 120 °C não protege nada.
+    /// O teto máximo de duração, o mesmo aplicado por <c>CargaCpuRunner.DuracaoMaximaPermitida</c>.
     /// </summary>
-    private bool ValidarLimiteParada(out double limite, out string? erro)
-    {
-        erro = null;
-        limite = 100;
-        var texto = LimiteParadaTexto?.Trim().Replace('.', ',');
-        if (!double.TryParse(texto, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.GetCultureInfo("pt-BR"), out var valor))
-        {
-            erro = "O limite de parada automática precisa ser um número (ex.: 100).";
-            return false;
-        }
-
-        if (valor < 60 || valor > 120)
-        {
-            erro = "O limite de parada automática precisa estar entre 60 e 120 °C.";
-            return false;
-        }
-
-        limite = valor;
-        return true;
-    }
+    public static int MaximoTetoDuracaoMinutos => (int)FlavosDiag.Workloads.CargaCpuRunner.DuracaoMaximaPermitida.TotalMinutes;
 
     private bool ValidarTetoDuracao(out int minutos, out string? erro)
     {

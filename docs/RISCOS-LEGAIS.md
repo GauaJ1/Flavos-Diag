@@ -30,6 +30,12 @@
 - O app executa somente varredura somente leitura de sistema de arquivos (`chkdsk /scan`) e leitura de SMART via drivers do sistema.
 - **Risco:** mesmo somente leitura, leitura intensiva em disco degradado pode agravar a falha. Mitigado pelo aviso obrigatório de backup, pela possibilidade de cancelar e pelo uso somente leitura.
 - **Ação:** o aviso ao usuário deixa claro que a responsabilidade por backup é do técnico/cliente.
+- **Controle adicional (T6/D78) — pass-through por lista de permitidos.** A leitura SMART/NVMe via `DeviceIoControl` exige que o disco seja aberto com `GENERIC_WRITE` (ver D31): o driver de armazenamento do Windows recusa o pass-through em handle somente leitura. Isso significa que o processo tem, naquele handle, permissão de escrita no disco do cliente — e a única coisa que impede um comando de escrita de ser enviado é o próprio código. Por isso o envio passou a ser fechado:
+  - Existe **uma** lista de comandos permitidos (`ComandosDiscoPermitidos`), com apenas comandos de leitura: `IDENTIFY DEVICE` (0xEC), `SMART READ DATA` (0xD0) e `NVMe Get Log Page` (0x02). Escrita de setores (0x30), `SMART WRITE LOG` (0xD6) e afins não estão na lista.
+  - Existe **uma** função (`RequisicaoDisco.Executar`) que monta o pedido. Ela recebe uma enumeração fechada, **não** um byte de comando: não há como passar um opcode arbitrário de fora.
+  - A conferência da lista acontece **antes** de abrir o disco; sem elevação ou sem o aceite do usuário, o disco não é aberto e o veredito fica Inconclusivo com a causa.
+  - Nenhum outro arquivo do `src/` abre `\\.\PhysicalDriveN` com escrita nem cita os IOCTL de pass-through; um teste de arquitetura varre o código-fonte e falha se isso acontecer.
+- **Risco residual:** o handle ainda tem permissão de escrita (limitação do driver, não escolha nossa). O controle reduz a superfície a três comandos de leitura e impede a abertura fora do caminho único; ele **não** altera a permissão concedida pelo Windows ao handle. Um defeito no próprio kernel/driver continua fora do alcance do aplicativo.
 
 ## R7 — Testes de estresse em computadores de clientes — REVISAR
 - Mesmo com limite de temperatura e duração, estresse pode revelar (ou causar) falhas em equipamentos em condição limítrofe. Um equipamento sem sensor de temperatura fica limitado a 2 minutos.

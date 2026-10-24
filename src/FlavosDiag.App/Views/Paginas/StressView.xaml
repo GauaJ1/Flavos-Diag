@@ -16,6 +16,8 @@
                         <TextBlock Style="{StaticResource TextoSuave}" Margin="0,4,24,0" MaxWidth="640" HorizontalAlignment="Left">
                             Mantém o processador sob carga e desenha a temperatura segundo a segundo.
                             O teste para sozinho por segurança e também pode ser interrompido a qualquer momento em Parar.
+                            Esses limites <Bold>reduzem</Bold> o risco de superaquecimento; não garantem proteção
+                            do equipamento. Se a temperatura parecer anormal, pare o teste.
                         </TextBlock>
                         <TextBlock Margin="0,10,0,0" Style="{StaticResource TextoSuave}"
                                    Text="{Binding Threads, StringFormat={}{0} threads em uso}" />

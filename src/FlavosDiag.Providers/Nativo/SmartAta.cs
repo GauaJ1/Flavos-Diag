@@ -183,100 +183,36 @@ public static class SmartAta
     }
 
     /// <summary>
-    /// Lê o bloco SMART por IOCTL_ATA_PASS_THROUGH_DIRECT (comando ATA SMART READ DATA).
-    /// Só funciona em dispositivos ATA/ATAPI que exponham o comando; a falha devolve o motivo.
+    /// Lê o bloco SMART (comando ATA SMART READ DATA) por <see cref="RequisicaoDisco"/>, o único caminho
+    /// que abre o disco com acesso de escrita e monta o task file a partir da lista de permitidos.
+    /// A falha devolve o motivo legível em pt-BR, como o resto dos providers.
     /// </summary>
     /// <remarks>
     /// O handle precisa ser aberto com <c>GENERIC_WRITE</c> mesmo para um comando de leitura: o driver de
-    /// armazenamento do Windows só repassa o pass-through ATA a handles com acesso de escrita.
-    /// Com acesso somente-leitura o IOCTL falha com ERROR_ACCESS_DENIED (5). Isso <b>não</b> escreve nada:
-    /// o comando enviado é SMART READ DATA (0xD0), sem modificação — a restrição é do driver, não nossa.
+    /// armazenamento do Windows só repassa o pass-through ATA a handles com acesso de escrita (D31).
+    /// Isso <b>não</b> escreve nada — o comando enviado é SMART READ DATA (0xD0) — mas, como o handle tem
+    /// permissão de escrita, o comando passou a vir de uma lista fechada (D78): esta função não aceita
+    /// byte de comando, só indica qual leitura quer.
     /// </remarks>
-    public static LeituraSmartBruta LerSmartAta(int numeroDisco)
+    /// <param name="numeroDisco">Índice do disco físico.</param>
+    /// <param name="permissoes">Elevação e consentimento já conferidos pelo chamador.</param>
+    public static LeituraSmartBruta LerSmartAta(int numeroDisco, RequisicaoDisco.Permissoes permissoes)
     {
-        using var dispositivo = AbrirDisco(numeroDisco, escrita: true, out var erroAbertura);
-        if (dispositivo is null || dispositivo.IsInvalid)
-        {
-            return new LeituraSmartBruta(false, null, erroAbertura);
-        }
-
-        var tamanhoSaida = Marshal.SizeOf<AtaPassThroughDirect>();
-        var buffer = Marshal.AllocHGlobal(tamanhoSaida);
-        var dadosSaida = Marshal.AllocHGlobal(512);
-        try
-        {
-            var pacote = new AtaPassThroughDirect
-            {
-                Length = (ushort)tamanhoSaida,
-                AtaFlags = AtaFlags.AtaFlagsRead | AtaFlags.AtaFlagsDRDYRequired,
-                DataTransferLength = 512,
-                TimeOutValue = 10,
-                DataBufferOffset = dadosSaida,
-                CurrentTaskFile = new byte[8],
-                PreviousTaskFile = new byte[8],
-            };
-            // Task file do comando ATA SMART READ DATA (ATA/ATAPI-8):
-            //   Feature  = 0xD8 quando é o pedido de status; para ler atributos usa-se Feature = 0xD8
-            //              apenas no RETURN STATUS. Na leitura de dados: Features=0x00,
-            //   SectorCount = 0x01 (lê 1 setor),
-            //   LBA Low  = 0xC2 ou 0x00 (endereço do setor SMARTCYLINDER, 1-based; use 1 → 0x01 LBA Low
-            //              para o bloco de dados do primeiro setor),
-            //   Command  = 0xD0 (SMART READ DATA).
-            // Erro 0x04 (ABRT) indica task file incompleto: todos os registradores devem estar coerentes.
-            pacote.CurrentTaskFile[0] = 0x00; // Features
-            pacote.CurrentTaskFile[1] = 0x01; // SectorCount = 1 setor
-            pacote.CurrentTaskFile[2] = 0x01; // LBA Low = 1 (setor de dados SMART)
-            pacote.CurrentTaskFile[3] = 0x4F; // LBA Mid
-            pacote.CurrentTaskFile[4] = 0xC2; // LBA High
-            pacote.CurrentTaskFile[5] = 0xA0; // Device/Head
-            pacote.CurrentTaskFile[6] = ApiNativas.AtaSmartReadData;
-
-            Marshal.StructureToPtr(pacote, buffer, false);
-            var ok = ApiNativas.DeviceIoControl(
-                dispositivo,
-                ApiNativas.IOCTL_ATA_PASS_THROUGH_DIRECT,
-                buffer,
-                tamanhoSaida,
-                buffer,
-                tamanhoSaida,
-                out _,
-                IntPtr.Zero);
-
-            if (!ok)
-            {
-                var codigo = Marshal.GetLastWin32Error();
-                return new LeituraSmartBruta(false, null, DescricaoErro(codigo));
-            }
-
-            var resultado = Marshal.PtrToStructure<AtaPassThroughDirect>(buffer);
-            var bytes = new byte[512];
-            Marshal.Copy(dadosSaida, bytes, 0, 512);
-
-            // Status 0x50/0x40 = comando concluído; erro no registrador → dados inválidos.
-            var status = resultado.CurrentTaskFile[6];
-            var erro = resultado.CurrentTaskFile[0];
-            if (erro != 0 || (status & 0x81) != 0)
-            {
-                return new LeituraSmartBruta(false, null,
-                    $"O dispositivo recusou o comando SMART (status 0x{status:X2}, erro 0x{erro:X2}).");
-            }
-
-            return new LeituraSmartBruta(true, bytes, null);
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-            Marshal.FreeHGlobal(dadosSaida);
-        }
+        var resultado = RequisicaoDisco.Executar(numeroDisco, RequisicaoDisco.PedidoAta.LerAtributosSmart, permissoes);
+        return new LeituraSmartBruta(resultado.Sucesso, resultado.Dados, resultado.Erro);
     }
 
     /// <summary>
     /// SMART predito pelo Windows (IOCTL_STORAGE_PREDICT_FAILURE). Funciona em muitos dispositivos
     /// USB e RAID onde o IOCTL ATA não passa; devolve apenas "prevê falha sim/não".
     /// </summary>
+    /// <remarks>
+    /// Não é pass-through: não envia comando ATA ao disco, só pergunta ao driver o que ele já sabe. Por
+    /// isso abre o disco <b>somente leitura</b> e não depende de consentimento para leitura do disco.
+    /// </remarks>
     public static LeituraSmartBruta LerPredicaoWindows(int numeroDisco)
     {
-        using var dispositivo = AbrirDisco(numeroDisco, escrita: false, out var erroAbertura);
+        using var dispositivo = RequisicaoDisco.AbrirSomenteLeitura(numeroDisco, out var erroAbertura);
         if (dispositivo is null || dispositivo.IsInvalid)
         {
             return new LeituraSmartBruta(false, null, erroAbertura);
@@ -302,7 +238,7 @@ public static class SmartAta
 
             if (!ok || retornados == 0)
             {
-                return new LeituraSmartBruta(false, null, DescricaoErro(Marshal.GetLastWin32Error()));
+                return new LeituraSmartBruta(false, null, RequisicaoDisco.DescricaoErro(Marshal.GetLastWin32Error()));
             }
 
             var lido = Marshal.PtrToStructure<STORAGE_PREDICT_FAILURE_SAIDA>(pontSaida);
@@ -316,63 +252,4 @@ public static class SmartAta
             Marshal.FreeHGlobal(pontSaida);
         }
     }
-
-    internal static Microsoft.Win32.SafeHandles.SafeFileHandle? AbrirDisco(int numero, bool escrita, out string? erro)
-    {
-        erro = null;
-        var caminho = @"\\.\PhysicalDrive" + numero;
-        var acesso = ApiNativas.GENERIC_READ | (escrita ? ApiNativas.GENERIC_WRITE : 0);
-        var alca = ApiNativas.CreateFileW(
-            caminho,
-            acesso,
-            ApiNativas.FILE_SHARE_READ | ApiNativas.FILE_SHARE_WRITE,
-            IntPtr.Zero,
-            ApiNativas.OPEN_EXISTING,
-            0,
-            IntPtr.Zero);
-
-        if (alca.IsInvalid)
-        {
-            var codigo = Marshal.GetLastWin32Error();
-            erro = codigo == 5
-                ? "Acesso negado ao dispositivo: execute como administrador para ler o SMART."
-                : DescricaoErro(codigo);
-            alca.Dispose();
-            return null;
-        }
-
-        return alca;
-    }
-
-    internal static string DescricaoErro(int codigo) => codigo switch
-    {
-        5 => "Acesso negado pelo Windows: o pass-through ATA exige executar como administrador.",
-        2 => "Dispositivo não encontrado.",
-        1 => "Função não suportada por este dispositivo.",
-        50 => "A operação não é suportada por este dispositivo (comum em adaptadores USB).",
-        1117 => "Falha de E/S ao ler o dispositivo.",
-        87 => "Parâmetro inválido para este dispositivo.",
-        _ => "Falha do Windows ao consultar o dispositivo (código " + codigo + ").",
-    };
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct AtaPassThroughDirect
-{
-    public ushort Length;
-    public ushort AtaFlags;
-    public byte PathId;
-    public byte TargetId;
-    public byte Lun;
-    public byte ReservedAsUchar;
-    public uint DataTransferLength;
-    public uint TimeOutValue;
-    public uint ReservedAsUlong;
-    public IntPtr DataBufferOffset;
-
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-    public byte[] PreviousTaskFile;
-
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-    public byte[] CurrentTaskFile;
 }

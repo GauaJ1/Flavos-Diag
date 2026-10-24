@@ -26,6 +26,17 @@ public static class SensoresConfiabilidadeTests
         yield return ("T1: CPU com leitura válida continua funcionando", () => Task.Run(CpuValidaContinuaValendo));
         yield return ("T1: amostra carrega a lista de sensores sem leitura", () => Task.Run(AmostraCarregaSemLeitura));
 
+        // ---- Revisão pós-decisões: Min == Max deixou de ser sentinela ----
+        yield return ("R1: sensor estável com mín == máx continua Ok", () => Task.Run(EstavelMinIgualMaxContinuaOk));
+        yield return ("R1: primeira leitura com mín == máx é Ok", () => Task.Run(PrimeiraLeituraOk));
+        yield return ("R1: 0 com mín 0 e máx 80 continua sem leitura", () => Task.Run(ZeroComMaxDiferente));
+        yield return ("R2: série 60, 60, 255, 60 não dispara emergência", () => Task.Run(SerieComSentinelaNaoPara));
+        yield return ("R2: série 60, 125, 125 dispara emergência", () => Task.Run(Serie125DuasVezesPara));
+        yield return ("R2: 255 constante nunca é emergência", () => Task.Run(Sentinela255NuncaEhEmergencia));
+        yield return ("R1: 120 s idêntico sob carga em CPU fica Suspeito", () => Task.Run(CongeladoSobCargaSuspeito));
+        yield return ("R1: estável em repouso continua Ok", () => Task.Run(EstavelEmRepousoOk));
+        yield return ("R1: Suspeito perde a confiança alta", () => Task.Run(SuspeitoNaoEhConfiancaAlta));
+
         // ---- Tarefa 2: causa da falta de leitura ----
         yield return ("T2: não elevado pede administrador", () => Task.Run(NaoElevadoPedeAdmin));
         yield return ("T2: elevado sem PawnIO pede o driver", () => Task.Run(ElevadoSemPawnIo));
@@ -423,6 +434,158 @@ public static class SensoresConfiabilidadeTests
         Assert.True(protecao.Avaliar(105, TimeSpan.FromSeconds(5), true) is null, "recomeço (2)");
         Assert.True(protecao.Avaliar(105, TimeSpan.FromSeconds(6), true) is not null, "recomeço (3) para");
     }
+
+    // ------------------------------------------------- revisão pós-decisões (D78)
+
+    /// <summary>
+    /// Medido nesta máquina: o <c>GPU Core</c> devolve <c>46 (min 46, max 46)</c> em leituras
+    /// sucessivas. É uma leitura boa. A regra antiga tratava <c>Min == Max</c> como ausência de
+    /// leitura e descartava esse sensor.
+    /// </summary>
+    private static void EstavelMinIgualMaxContinuaOk()
+    {
+        Assert.False(
+            TemperaturaFisica.EhSentinela(48, 48, 48),
+            "sensor estável em 48 °C, com mín e máx iguais, é leitura válida");
+        Assert.False(
+            TemperaturaFisica.EhSentinela(46, 46, 46),
+            "o caso real do GPU Core desta máquina precisa continuar valendo");
+
+        var amostra = Amostra(new[]
+        {
+            Temperatura(TipoHardware.Gpu, "GPU Core", 48),
+            Temperatura(TipoHardware.Cpu, "Core (Tctl/Tdie)", 55),
+        });
+
+        Assert.Equal(55.0, ClassificadorTemperatura.DaCpu(amostra, out _));
+        Assert.Equal(48.0, ClassificadorTemperatura.DaGpu(amostra, out _));
+    }
+
+    /// <summary>Min e Max são acumulados desde a abertura: na primeira leitura são sempre iguais.</summary>
+    private static void PrimeiraLeituraOk()
+    {
+        Assert.False(
+            TemperaturaFisica.EhSentinela(69, 69, 69),
+            "a primeira amostra de qualquer sensor tem mín == máx e não pode ser descartada");
+        Assert.True(TemperaturaFisica.Valida(69), "69 °C é temperatura plausível");
+    }
+
+    private static void ZeroComMaxDiferente()
+    {
+        Assert.True(
+            TemperaturaFisica.EhSentinela(0, 0, 80),
+            "0 continua sendo sentinela mesmo que o sensor já tenha variado");
+        Assert.Contains("sentinela", TemperaturaFisica.MotivoSemLeitura(0, 0, 80));
+    }
+
+    /// <summary>255 é maior que 120: uma regra só de "acima de 120" o trataria como superaquecimento.</summary>
+    private static void SerieComSentinelaNaoPara()
+    {
+        foreach (var v in new double[] { 60, 60, 255, 60 })
+        {
+            var amostra = Amostra(new[] { Temperatura(TipoHardware.Cpu, "Core (Tctl/Tdie)", v) });
+            Assert.True(
+                CargaCpuRunner.TemperaturaCruaAcimaDoFisico(amostra) is null,
+                $"o valor {v} °C não pode contar como emergência térmica");
+        }
+    }
+
+    private static void Serie125DuasVezesPara()
+    {
+        var amostra = Amostra(new[] { Temperatura(TipoHardware.Cpu, "Core (Tctl/Tdie)", 125) });
+        Assert.Equal(125.0, CargaCpuRunner.TemperaturaCruaAcimaDoFisico(amostra));
+        Assert.Equal(2, CargaCpuRunner.AmostrasConsecutivasEmergencia);
+    }
+
+    private static void Sentinela255NuncaEhEmergencia()
+    {
+        var amostra = Amostra(new[]
+        {
+            Temperatura(TipoHardware.Cpu, "CPU Package", 255),
+            Temperatura(TipoHardware.Gpu, "GPU Core", 255),
+        });
+
+        Assert.True(
+            CargaCpuRunner.TemperaturaCruaAcimaDoFisico(amostra) is null,
+            "255 é 'sem leitura' e precisa cair no teto sem sensor, nunca na emergência");
+    }
+
+    /// <summary>Valor rigorosamente idêntico por 120 s com a CPU acima de 50 % de carga.</summary>
+    private static void CongeladoSobCargaSuspeito()
+    {
+        var detector = new DetectorCongelamento();
+        var inicio = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.FromHours(-3));
+
+        var primeiro = Detector(detector, inicio, temperatura: 55, carga: 90);
+        Assert.True(primeiro.Count == 0, "a primeira leitura não pode ser suspeita");
+
+        var meio = Detector(detector, inicio.AddSeconds(119), temperatura: 55, carga: 90);
+        Assert.True(meio.Count == 0, "aos 119 s ainda não passou do limite");
+
+        var fim = Detector(detector, inicio.AddSeconds(120), temperatura: 55, carga: 90);
+        Assert.Single(fim);
+        Assert.True(
+            fim.Contains("hardware/Core (Tctl/Tdie)"),
+            "o sensor congelado precisa ser identificado pelo mesmo Id do catálogo");
+    }
+
+    private static void EstavelEmRepousoOk()
+    {
+        var detector = new DetectorCongelamento();
+        var inicio = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.FromHours(-3));
+
+        _ = Detector(detector, inicio, temperatura: 45, carga: 3);
+        var depois = Detector(detector, inicio.AddSeconds(600), temperatura: 45, carga: 3);
+
+        Assert.True(depois.Count == 0, "parado, ficar em 45 °C por 10 minutos é normal, não suspeito");
+    }
+
+    /// <summary>
+    /// Suspeito continua sendo leitura — aparece no gráfico — mas não pode ser confiança alta: o
+    /// classificador só aceita <see cref="QualidadeSensor.Ok"/>.
+    /// </summary>
+    private static void SuspeitoNaoEhConfiancaAlta()
+    {
+        var ok = Amostra(new[] { Temperatura(TipoHardware.Cpu, "Core (Tctl/Tdie)", 55) });
+        var suspeito = Amostra(new[]
+        {
+            Temperatura(TipoHardware.Cpu, "Core (Tctl/Tdie)", 55) with
+            {
+                Qualidade = QualidadeSensor.Suspeito,
+            },
+        });
+
+        Assert.Equal(55.0, ClassificadorTemperatura.DaCpu(ok, out _));
+        Assert.True(
+            ClassificadorTemperatura.DaCpu(suspeito, out var causa) is null,
+            "Suspeito não é confiança alta para a parada automática");
+        Assert.True(causa is not null, "e a causa precisa ser explicada");
+    }
+
+    private static IReadOnlySet<string> Detector(
+        DetectorCongelamento detector,
+        DateTimeOffset quando,
+        double temperatura,
+        double carga) => detector.Avaliar(new AmostraSensores
+        {
+            Quando = quando,
+            Valores =
+            [
+                Temperatura(TipoHardware.Cpu, "Core (Tctl/Tdie)", temperatura),
+                new ValorSensor
+                {
+                    Id = "cpu/carga",
+                    Categoria = CategoriaSensor.Carga,
+                    Rotulo = "CPU Carga",
+                    Valor = carga,
+                    Unidade = "%",
+                    TipoHardware = TipoHardware.Cpu,
+                    NomeHardware = "CPU",
+                    NomeSensor = "CPU Carga",
+                    Qualidade = QualidadeSensor.Ok,
+                },
+            ],
+        });
 
     // ------------------------------------------------------------------ Tarefa 4
 

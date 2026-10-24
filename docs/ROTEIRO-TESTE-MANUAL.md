@@ -305,10 +305,26 @@ A pontuação é própria do Flavos Diag e não é comparável com a de outros p
 ## 4D. Sensores de temperatura — causa da CPU sem leitura
 
 Esta seção existe por causa de um caso concreto: na máquina do dono (AMD Ryzen 5 8500G, Radeon 740M
-integrada), o sensor `Core (Tctl/Tdie)` devolveu `Value = 0`, `Min = 0` e `Max = 0` mesmo sob carga — ou
-seja, sentinela, não medição. O app agora rejeita esse valor na leitura, diagnostica a causa e registra a
-amostra recusada (`DECISOES.md` D68 a D74). Tudo isso está **implementado, aguardando validação no
-hardware**.
+integrada), o sensor `Core (Tctl/Tdie)` devolveu `Value = 0`, `Min = 0` e `Max = 0` — sentinela, não
+medição. O app rejeita esse valor na leitura, diagnostica a causa e registra a amostra recusada
+(`docs/DECISOES.md` D68, D70, D78).
+
+### 4D.0 O que já foi apurado (24/10/2026)
+
+Medido com o driver PawnIO instalado e em execução:
+
+| Condição | `Core (Tctl/Tdie)` | `PawnIo.IsInstalled` |
+|---|---|---|
+| Aplicativo **sem** elevação | 0 (mín 0, máx 0) | `True` |
+| Aplicativo **elevado** | **69 °C** (mín 68,875, máx 69,0) | `True` |
+
+**A causa era a falta de elevação, não a ausência do driver.** Com o driver presente, mas sem
+privilégio de administrador, a biblioteca devolve a sentinela 0.
+
+O que **continua pendente**: o estresse real com a leitura funcionando. Nenhum teste de carga foi
+executado automaticamente; isso exige o técnico na frente da máquina.
+
+### 4D.1 Passo a passo no hardware do dono
 
 Antes de começar: o driver de leitura de sensores usado pela biblioteca (PawnIO) foi **confirmado ausente
 nesta máquina** (`PawnIo.IsInstalled = false`), e essa é a causa mais provável da falta de leitura. O app

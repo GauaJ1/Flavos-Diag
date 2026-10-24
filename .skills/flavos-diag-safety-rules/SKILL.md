@@ -13,6 +13,13 @@ O aplicativo roda na máquina de um cliente, muitas vezes com hardware já defei
 
 **Nunca escrever em setores** para "consertar". O app detecta, registra e recomenda. Em SSD, o controlador já gerencia realocação, e em HDD defeituoso a escrita direta pode agravar a falha. A única verificação de sistema de arquivos permitida é a varredura online em modo somente leitura do Windows.
 
+**Pass-through de disco vem de lista de permitidos.** O Windows só repassa comandos SMART/NVMe a um disco aberto com `GENERIC_WRITE`, então o processo tem permissão de escrita naquele handle mesmo lendo só (ver `docs/DECISOES.md` D31 e D78). Como a permissão existe, o comando precisa ser fechado:
+- Um único tipo lista os comandos aceitos (`ComandosDiscoPermitidos`), **somente leitura**: `IDENTIFY DEVICE` (0xEC), `SMART READ DATA` (0xD0), `NVMe Get Log Page` (0x02). Não acrescente comando sem justificar em revisão.
+- Uma única função monta o pedido (`RequisicaoDisco.Executar`) e recusa o que não está na lista. Ela recebe um **pedido enumerado**, nunca um byte de comando: não crie sobrecarga que aceite opcode, feature ou task file vindo de fora.
+- A lista é conferida **antes** de abrir o disco. Sem elevação ou sem o aceite do usuário, o disco não é aberto e o resultado é **Inconclusivo com a causa** — nunca OK.
+- Nenhum outro arquivo abre `\\.\PhysicalDriveN` com escrita nem cita os IOCTL de pass-through. Abertura para consultar descritor, tamanho, penalidade de busca ou previsão de falha usa `AbrirSomenteLeitura`.
+- Comando de escrita (setores, SMART WRITE LOG, formatar, sanitizar) é **proibido**, mesmo "só para testar".
+
 **Varredura de superfície**: somente leitura, cancelável, precedida por aviso exato: "Faça backup antes. Discos com defeito podem piorar durante a leitura." Ler um disco em estado crítico também o estressa; ofereça interromper ao detectar lentidão extrema ou erros de leitura repetidos.
 
 **Teste de estresse** (CPU, GPU):
@@ -62,6 +69,8 @@ Sem leitura, sem permissão ou erro = **Inconclusivo** com a causa. Nunca assuma
 ## 4. Revisão rápida antes de cada commit
 - [ ] Algum código novo escreve fora de pasta temporária própria? Se sim, remover.
 - [ ] Algum processo novo usa `ArgumentList`, caminho fixo, timeout e limite de saída?
+- [ ] Algum comando de disco novo passa pela lista de permitidos e é de leitura? Abriu `\\.\PhysicalDrive` fora do caminho único?
+- [ ] O aviso de leitura de disco aparece antes da leitura, e sem ele o veredito fica Inconclusivo?
 - [ ] Estresse novo tem confirmação, limite de temperatura, limite de tempo e parada?
 - [ ] Algum dado identificável novo foi para log ou laudo sem mascaramento opcional?
 - [ ] Auditoria de pacotes executada e sem achados altos ou críticos?

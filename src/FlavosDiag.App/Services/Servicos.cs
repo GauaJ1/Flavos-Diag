@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FlavosDiag.Core.Abstractions;
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Core.Monitor;
 using FlavosDiag.Providers;
 using FlavosDiag.Providers.Abstractions;
 using FlavosDiag.Providers.Dxgi;
@@ -24,9 +25,16 @@ public sealed class Configuracao
 
     public string Contato { get; set; } = string.Empty;
 
-    public double LimiteTemperaturaCpuCelsius { get; set; } = 90;
+    /// <summary>
+    /// Limite de veredito térmico da CPU. O padrão vem de <see cref="LimitesTermicos"/> e passou de
+    /// 90 para 95 °C: 90 °C de projeto é normal em processador moderno sob carga, e reprovar máquina
+    /// saudável é a forma mais rápida de ensinar o técnico a ignorar o veredito.
+    /// </summary>
+    public double LimiteTemperaturaCpuCelsius { get; set; } = LimitesTermicos.VereditoCpuCelsius;
 
-    public double LimiteTemperaturaGpuCelsius { get; set; } = 85;
+    /// <summary>Limite de veredito térmico da GPU: o limite da CPU mais a margem de projeto da placa.</summary>
+    public double LimiteTemperaturaGpuCelsius { get; set; } =
+        LimitesTermicos.LimiteDoComponente(TipoHardware.Gpu, LimitesTermicos.VereditoCpuCelsius);
 
     public string ServidorTesteRede { get; set; } = string.Empty;
 
@@ -46,13 +54,14 @@ public sealed class Configuracao
     /// Temperatura a partir da qual o gráfico de stress destaca a faixa de alerta. O destaque é
     /// só visual; a parada automática usa <see cref="LimiteParadaAutomaticaCelsius"/>.
     /// </summary>
-    public double LimiarAlertaTemperaturaCelsius { get; set; } = 95;
+    public double LimiarAlertaTemperaturaCelsius { get; set; } = LimitesTermicos.AlertaVisualCelsius;
 
     /// <summary>
-    /// Temperatura de confiança alta a partir da qual o stress para sozinho. Padrão 100 °C: acima
+    /// Temperatura de confiança alta a partir da qual o stress para sozinho. Padrão 95 °C: acima
     /// disso, manter carga total só faz sentido se alguém quiser queimar o equipamento de propósito.
+    /// O teto de 110 °C é aplicado pela validação de <see cref="LimitesTermicos"/>.
     /// </summary>
-    public double LimiteParadaAutomaticaCelsius { get; set; } = 100;
+    public double LimiteParadaAutomaticaCelsius { get; set; } = LimitesTermicos.ParadaAutomaticaCelsius;
 
     /// <summary>
     /// Teto de duração do stress quando há leitura de temperatura. Padrão 30 minutos, ajustável até
@@ -144,6 +153,12 @@ public sealed class Servicos : IDisposable
 
     public required IElevacaoService Elevacao { get; init; }
 
+    /// <summary>
+    /// Aceite do usuário para ler o disco por pass-through. O provider consulta isto antes de abrir o
+    /// disco com acesso de escrita (D78); a interface registra a resposta do aviso.
+    /// </summary>
+    public required IAutorizacaoLeituraDisco LeituraDiscoAutorizada { get; init; }
+
     public required WmiFonteAuditada Wmi { get; init; }
 
     public string Versao { get; } = typeof(Servicos).Assembly.GetName().Version?.ToString(3) ?? "0.5.0";
@@ -170,9 +185,11 @@ public sealed class Servicos : IDisposable
                 Memoria = new MemoriaIndisponivel("Teste de memória indisponível no modo de demonstração."),
                 CargaCpu = new CargaCpuIndisponivel("Carga de CPU indisponível no modo de demonstração."),
                 Elevacao = new FakeElevacaoService(),
+                LeituraDiscoAutorizada = new AutorizacaoLeituraDisco(),
             };
         }
 
+        var leituraDiscoAutorizada = new AutorizacaoLeituraDisco();
         return new Servicos
         {
             Ambiente = ambiente,
@@ -180,13 +197,14 @@ public sealed class Servicos : IDisposable
             Wmi = wmi,
             Inventario = new InventarioWmiProvider(wmi, ambiente, new DxgiInfo()),
             Sensores = new FlavosDiag.Providers.Sensores.SensoresHardwareFactory(),
-            Discos = new FlavosDiag.Providers.Discos.DiscosWindowsProvider(),
+            Discos = new FlavosDiag.Providers.Discos.DiscosWindowsProvider(ambiente, leituraDiscoAutorizada),
             Bateria = new FlavosDiag.Providers.Bateria.BateriaWindowsProvider(),
             Rede = new FlavosDiag.Providers.Rede.RedeWindowsProvider(),
             Gpu = new FlavosDiag.Providers.Gpu.GpuD3D11Provider(new FlavosDiag.Providers.Sensores.SensoresHardwareFactory()),
             Memoria = new FlavosDiag.Workloads.TesteMemoriaRunner(),
             CargaCpu = new FlavosDiag.Workloads.CargaCpuRunner(),
             Elevacao = new ElevacaoService(ambiente),
+            LeituraDiscoAutorizada = leituraDiscoAutorizada,
         };
     }
 

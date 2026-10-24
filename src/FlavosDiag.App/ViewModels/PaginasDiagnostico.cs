@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using FlavosDiag.Core;
 using FlavosDiag.Core.Abstractions;
 using FlavosDiag.Core.Modelos;
+using FlavosDiag.Core.Monitor;
 using FlavosDiag.Core.Vereditos;
 using FlavosDiag.Workloads;
 
@@ -442,17 +443,48 @@ public sealed partial class CpuViewModel : PaginaBase
         }
     }
 
-    [RelayCommand]
-    private async Task Benchmarquar()
+    [RelayCommand(IncludeCancelCommand = true)]
+    private async Task BenchmarquarAsync(CancellationToken cancelamento)
     {
         await ExecutarAsync(async () =>
         {
-            var benchmark = await Principal.Servicos.CargaCpu.BenchmarkAsync(
-                threads: Environment.ProcessorCount,
-                progresso: null,
-                cancelamento: CancellationToken.None);
-            Principal.BenchmarkCpu = benchmark;
-            Montar();
+            // O benchmark é carga total na CPU: abre a própria sessão de sensores para que a parada
+            // térmica funcione de verdade. Antes ele rodava sem leitura e sem cancelamento.
+            Core.Abstractions.ISensorProvider? sessao = null;
+            try
+            {
+                sessao = Principal.Servicos.Sensores.Criar();
+                var abertura = await sessao.AbrirAsync(cancelamento);
+                Func<AmostraSensores?> leitura = abertura.Disponivel
+                    ? () =>
+                    {
+                        try
+                        {
+                            return sessao.Ler();
+                        }
+                        catch (Exception ex) when (ex is not OutOfMemoryException)
+                        {
+                            return null;
+                        }
+                    }
+                    : () => null;
+
+                var benchmark = await Principal.Servicos.CargaCpu.BenchmarkAsync(
+                    threads: Environment.ProcessorCount,
+                    progresso: null,
+                    cancelamento: cancelamento,
+                    leituraSensores: leitura);
+
+                Principal.BenchmarkCpu = benchmark;
+                Montar();
+            }
+            finally
+            {
+                if (sessao is not null)
+                {
+                    await sessao.DisposeAsync();
+                }
+            }
         }, "Não foi possível concluir o benchmark.");
     }
 }
@@ -556,7 +588,9 @@ public sealed partial class GpuViewModel : PaginaBase
                 {
                     Perfil = PerfilCarga.Medio,
                     DuracaoMaxima = TimeSpan.FromMinutes(1),
-                    LimiteTemperaturaGpuCelsius = 85,
+                    LimiteTemperaturaGpuCelsius = LimitesTermicos.LimiteDoComponente(
+                        TipoHardware.Gpu,
+                        Principal.Configuracao.LimiteTemperaturaCpuCelsius),
                 },
                 deveParar: () => false,
                 progresso: null,

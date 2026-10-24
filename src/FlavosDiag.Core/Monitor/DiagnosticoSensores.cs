@@ -148,9 +148,10 @@ public static class DiagnosticoSensores
 
             CausaSensor.BibliotecaNaoLeu =>
                 prefixo + " O aplicativo está elevado e o driver PawnIO está instalado, mas a biblioteca " +
-                "reconheceu o processador e não conseguiu lê-lo. Isso costuma indicar incompatibilidade " +
-                "entre a versão da biblioteca e o modelo do processador. Use \"Exportar diagnóstico de " +
-                "sensores\" em Configurações e verifique se há versão mais nova da biblioteca.",
+                "reconheceu o processador e não conseguiu lê-lo. Se o driver foi instalado agora, feche e " +
+                "abra o Flavos Diag de novo: a biblioteca carrega o driver na abertura da sessão e não " +
+                "percebe uma instalação feita depois. Se continuar sem leitura, use \"Exportar diagnóstico " +
+                "de sensores\" em Configurações e verifique se há versão mais nova da biblioteca.",
 
             CausaSensor.Indeterminada =>
                 prefixo + " O aplicativo está elevado, mas não foi possível confirmar se o driver de " +

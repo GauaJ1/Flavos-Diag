@@ -64,6 +64,9 @@ public sealed partial class DiscoViewModel : PaginaBase
     {
         if (recarregar || Principal.Discos.Count == 0)
         {
+            // Aviso antes da leitura: o disco só é consultado (somente leitura) com o aceite do usuário.
+            // Sem aceite, o provider não abre o disco com acesso de escrita e a saúde fica Inconclusivo.
+            Principal.AutorizarLeituraDisco();
             await ExecutarAsync(async () =>
             {
                 Principal.Discos = await Principal.Servicos.Discos.ListarAsync();
@@ -80,9 +83,18 @@ public sealed partial class DiscoViewModel : PaginaBase
             ? "Nenhum disco foi lido. Use o diagnóstico rápido para coletar."
             : $"{Principal.Discos.Count} disco(s) encontrado(s).";
 
+        // Diz o que ficou faltando e por quê: sem aceite ou sem elevação a saúde não foi lida, e o
+        // técnico precisa saber disso sem abrir o laudo.
+        var causaLeitura = !Principal.Servicos.LeituraDiscoAutorizada.Autorizada
+            ? "Leitura do disco não autorizada: clique em Atualizar para ver o aviso e autorizar a consulta de saúde."
+            : !Principal.Servicos.Elevacao.Elevado
+                ? "Sem administrador: o Windows só libera a leitura SMART/NVMe com elevação, então a saúde fica Inconclusivo."
+                : null;
+
         Status = Principal.Discos.Count == 0
             ? null
-            : "A saúde vem dos dados que o próprio disco ou o Windows reportaram. Nenhum laudo substitui backup.";
+            : causaLeitura
+                ?? "A saúde vem dos dados que o próprio disco ou o Windows reportaram. Nenhum laudo substitui backup.";
     }
 
     [RelayCommand]

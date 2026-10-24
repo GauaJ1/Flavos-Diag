@@ -139,8 +139,11 @@ public static class Fase3Tests
             progresso: null,
             cancelamento: CancellationToken.None);
 
-        Assert.Equal(90.0, resultado.LimiteTemperaturaCelsius);
-        Assert.Equal(90.0, CargaCpuRunner.LimiteTemperaturaPadraoCelsius);
+        // O padrão deixou de ser um literal de 90 °C: subiu para 95 °C na D81 e vem de
+        // LimitesTermicos. O teste confere que o runner aplica o limite canônico, não um número próprio.
+        Assert.Equal(FlavosDiag.Core.Monitor.LimitesTermicos.VereditoCpuCelsius, resultado.LimiteTemperaturaCelsius);
+        Assert.Equal(FlavosDiag.Core.Monitor.LimitesTermicos.VereditoCpuCelsius, CargaCpuRunner.LimiteTemperaturaPadraoCelsius);
+        Assert.Equal(95.0, CargaCpuRunner.LimiteTemperaturaPadraoCelsius);
     }
 
     private static async Task SemSensorNaoInventaTemperatura()

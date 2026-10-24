@@ -20,8 +20,12 @@ namespace FlavosDiag.Workloads;
 /// </summary>
 public sealed class CargaCpuRunner : ICargaCpuRunner
 {
-    /// <summary>Limite padrão de temperatura da CPU, conforme a especificação.</summary>
-    public const double LimiteTemperaturaPadraoCelsius = 90.0;
+    /// <summary>
+    /// Limite padrão de temperatura da CPU quando a configuração não informa nenhum. Vem de
+    /// <see cref="LimitesTermicos"/>: aqui não existe número próprio, para que o runner e o veredito
+    /// nunca discordem sobre qual é o limite.
+    /// </summary>
+    public const double LimiteTemperaturaPadraoCelsius = LimitesTermicos.VereditoCpuCelsius;
 
     /// <summary>Teto obrigatório quando nenhum sensor de temperatura responde.</summary>
     public static readonly TimeSpan TetoSemSensor = TimeSpan.FromMinutes(2);
@@ -48,6 +52,9 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
     public static readonly TimeSpan IntervaloMaximoSemVerificacao = TimeSpan.FromSeconds(5);
 
     private static readonly TimeSpan PeriodoVigia = TimeSpan.FromSeconds(1);
+
+    /// <summary>Amostras consecutivas acima do máximo físico para a parada de emergência.</summary>
+    public const int AmostrasConsecutivasEmergencia = 2;
 
     private readonly Func<IReadOnlyList<Func<ICargaCpu>>, ExecutorCarga> _criarExecutor;
 
@@ -98,6 +105,7 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
         var instanteUltimaAmostra = TimeSpan.Zero;
         var jaAmostrou = false;
         var amostrasAcimaDoLimite = 0;
+        var amostrasEmergencia = 0;
         double? ultimaTemperatura = null;
 
         // Marca de tempo compartilhada com o vigia: atualizada a cada consulta ao predicado.
@@ -182,10 +190,18 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                 if (temperatura is null)
                 {
                     // O classificador descarta tudo acima de 120 °C por não ser uma temperatura
-                    // plausível. Mas se a leitura crua do processador está acima de 120 °C, isso é
-                    // exatamente a hora de parar — não de "seguir sem leitura". Sem este caso, uma
-                    // leitura sustentada de 130 °C nunca dispararia a proteção.
+                    // plausível. Mas se a leitura de um sensor de confiança alta está acima de
+                    // 120 °C, isso é a hora de parar — não de "seguir sem leitura". Sentinelas
+                    // conhecidos não chegam aqui (ver TemperaturaCruaAcimaDoFisico).
                     if (TemperaturaCruaAcimaDoFisico(amostra) is not { } crua)
+                    {
+                        amostrasEmergencia = 0;
+                        return false;
+                    }
+
+                    // Duas amostras consecutivas: um pico isolado de leitura não derruba o teste.
+                    amostrasEmergencia++;
+                    if (amostrasEmergencia < AmostrasConsecutivasEmergencia)
                     {
                         return false;
                     }
@@ -195,6 +211,11 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                     // número inventado no laudo.
                     temperatura = crua;
                     leituraImplausivel = true;
+                }
+                else
+                {
+                    // Leitura plausível quebra a sequência de emergência.
+                    amostrasEmergencia = 0;
                 }
 
                 if (!leituraImplausivel)
@@ -290,10 +311,78 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
     /// Benchmark de CPU: mede unidades/segundo em janelas de 3 s e usa a mediana de 5 amostras
     /// (conforme a especificação), com a pontuação normalizada do próprio algoritmo.
     /// </summary>
-    public Task<ResultadoBenchmarkCpu> BenchmarkAsync(int threads, IProgress<string>? progresso, CancellationToken cancelamento)
+    public Task<ResultadoBenchmarkCpu> BenchmarkAsync(int threads, IProgress<string>? progresso, CancellationToken cancelamento) =>
+        BenchmarkAsync(threads, progresso, cancelamento, null);
+
+    /// <summary>
+    /// Benchmark com proteção térmica. O benchmark também é carga total na CPU por vários segundos,
+    /// então passar a leitura de sensores e o limite é o que impede um teste de pico de aquecer a
+    /// máquina sem parada — antes ele rodava com um predicado fixo <c>() => false</c>, ou seja, sem
+    /// checar temperatura nenhuma.
+    /// </summary>
+    /// <param name="leituraSensores">
+    /// Leitura de sensores; <c>null</c> quando não há sessão aberta (aí não há proteção possível, e o
+    /// benchmark é mais curto).
+    /// </param>
+    public Task<ResultadoBenchmarkCpu> BenchmarkAsync(
+        int threads,
+        IProgress<string>? progresso,
+        CancellationToken cancelamento,
+        Func<AmostraSensores?>? leituraSensores) =>
+        BenchmarkAsync(threads, progresso, cancelamento, leituraSensores, LimiteTemperaturaPadraoCelsius, TimeSpan.FromSeconds(30));
+
+    public Task<ResultadoBenchmarkCpu> BenchmarkAsync(
+        int threads,
+        IProgress<string>? progresso,
+        CancellationToken cancelamento,
+        Func<AmostraSensores?>? leituraSensores,
+        double limiteCelsius,
+        TimeSpan teto)
     {
         return Task.Run(() =>
         {
+            var relogioBench = System.Diagnostics.Stopwatch.StartNew();
+            var acimaDoLimite = 0;
+            var emergencia = 0;
+
+            // Mesma regra do estresse: para por temperatura de confiança alta sustentada, e o teto
+            // de duração é absoluto. Sem sensor, só o teto protege — e ele é curto para o benchmark.
+            bool DeveParar()
+            {
+                if (relogioBench.Elapsed >= teto)
+                {
+                    return true;
+                }
+
+                if (leituraSensores is null || relogioBench.Elapsed.TotalSeconds < 1)
+                {
+                    return false;
+                }
+
+                var amostra = leituraSensores();
+                if (amostra is null)
+                {
+                    return false;
+                }
+
+                var temperatura = TemperaturaDaCpu(amostra);
+                if (temperatura is { } temp && temp >= limiteCelsius)
+                {
+                    acimaDoLimite++;
+                    return acimaDoLimite >= AmostrasAcimaDoLimiteParaParar;
+                }
+
+                acimaDoLimite = 0;
+
+                if (TemperaturaCruaAcimaDoFisico(amostra) is not null)
+                {
+                    emergencia++;
+                    return emergencia >= AmostrasConsecutivasEmergencia;
+                }
+
+                emergencia = 0;
+                return false;
+            }
             const int amostras = 5;
             var janela = TimeSpan.FromSeconds(3);
             var fabricas = MontadorCarga.Fabrica();
@@ -328,7 +417,7 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                 var cargaRef = fabricas[0];
                 var executor = new ExecutorCarga(new[] { cargaRef });
                 var resumo = executor
-                    .ExecutarAsync(workers, PerfilCarga.Pesado, janela, () => false, null, cancelamento)
+                    .ExecutarAsync(workers, PerfilCarga.Pesado, janela, DeveParar, null, cancelamento)
                     .GetAwaiter()
                     .GetResult();
                 var segundos = Math.Max(0.001, resumo.DuracaoEfetiva.TotalSeconds);
@@ -407,27 +496,48 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
     }
 
     /// <summary>
-    /// Leitura de temperatura do processador acima do máximo físico plausível (> 120 °C).
-    /// Situação de emergência: o valor é alto demais para ser medido, e a única resposta segura é parar.
-    /// Sentinelas conhecidos (0, 255, -128, valores não numéricos) devolvem <c>null</c>.
+    /// Leitura de temperatura acima do máximo físico plausível (> 120 °C) em sensor de confiança alta
+    /// da CPU ou da GPU. Situação de emergência: o valor é alto demais para ser medido.
     /// </summary>
+    /// <remarks>
+    /// Os sentinelas conhecidos (0, 255, -127, -128, NaN, infinito) devolvem <c>null</c>: 255 é maior
+    /// que 120, então uma regra que só comparasse "acima de 120" trataria a sentinela clássica de
+    /// "sem leitura" como superaquecimento e abortaria um teste saudável — exatamente o defeito que
+    /// a classificação na origem existe para evitar. Sentinela é ausência de leitura, e ausência de
+    /// leitura é tratada pelo teto sem sensor, nunca como calor.
+    /// <para>
+    /// Quem chama exige <b>duas</b> amostras consecutivas: um único pico de leitura não derruba o
+    /// teste.
+    /// </para>
+    /// </remarks>
     public static double? TemperaturaCruaAcimaDoFisico(AmostraSensores amostra)
     {
         ArgumentNullException.ThrowIfNull(amostra);
 
         var acima = amostra.Valores
             .Where(v => v.Categoria == CategoriaSensor.Temperatura &&
-                        v.TipoHardware == TipoHardware.Cpu &&
+                        v.TipoHardware is TipoHardware.Cpu or TipoHardware.Gpu &&
                         v.Qualidade == QualidadeSensor.Ok &&
-                        !double.IsNaN(v.Valor) &&
-                        !double.IsInfinity(v.Valor) &&
-                        v.Valor > TemperaturaFisica.MaximoValidoCelsius &&
-                        v.Valor != 255)
+                        !EhSentinelaConhecida(v.Valor) &&
+                        v.Valor > TemperaturaFisica.MaximoValidoCelsius)
             .Select(v => v.Valor)
             .ToList();
 
         return acima.Count == 0 ? null : acima.Max();
     }
+
+    /// <summary>
+    /// Sentinela <b>conhecida</b>: os códigos fixos de "sem leitura".
+    /// </summary>
+    /// <remarks>
+    /// Não dá para reaproveitar <see cref="TemperaturaFisica.EhSentinela"/> aqui. Aquela função
+    /// responde "isto é uma temperatura utilizável?", e 130 °C não é — mas 130 °C é exatamente o
+    /// valor que a emergência precisa ver. Usar a mesma função para as duas perguntas faria a
+    /// emergência ignorar todo valor alto, que é o único caso em que ela serve para alguma coisa.
+    /// </remarks>
+    private static bool EhSentinelaConhecida(double valor) =>
+        double.IsNaN(valor) || double.IsInfinity(valor) ||
+        valor is 0 or 255 or -127 or -128;
 
     private static Leitura<double> ClockSustentado(Func<AmostraSensores?> leitura)
     {

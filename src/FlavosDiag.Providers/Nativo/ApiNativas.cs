@@ -10,8 +10,11 @@ namespace FlavosDiag.Providers.Nativo;
 internal static class ApiNativas
 {
     // ---- Acesso a arquivos de dispositivo ----
+    //
+    // GENERIC_WRITE NÃO é declarado aqui de propósito: o direito de escrita em disco só é usado no
+    // caminho único (RequisicaoDisco), onde a constante vive. Se ele reaparecer neste arquivo ou em
+    // outro, o caminho único foi quebrado e o teste de arquitetura falha.
     public const uint GENERIC_READ = 0x80000000;
-    public const uint GENERIC_WRITE = 0x40000000;
     public const uint FILE_SHARE_READ = 0x00000001;
     public const uint FILE_SHARE_WRITE = 0x00000002;
     public const uint OPEN_EXISTING = 3;
@@ -19,11 +22,14 @@ internal static class ApiNativas
     public const uint FILE_FLAG_NO_BUFFERING = 0x20000000;
 
     // ---- IOCTL de armazenamento (winioctl.h) ----
+    //
+    // Os IOCTL de pass-through (IOCTL_ATA_PASS_THROUGH*, IOCTL_SCSI_MINIPORT) e os bytes de comando
+    // ATA ficam APENAS em RequisicaoDisco.cs e ComandosDiscoPermitidos.cs. Eles não são mais declarados
+    // aqui de propósito: se aparecerem neste arquivo ou em qualquer outro, o caminho único foi quebrado
+    // e o teste CoragemArquitetura falha. Os código abaixo são consultas de armazenamento do Windows,
+    // que não enviam comando ATA/NVMe ao disco.
     public const uint IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400;
     public const uint IOCTL_STORAGE_PREDICT_FAILURE = 0x002D1100;
-    public const uint IOCTL_ATA_PASS_THROUGH = 0x0004D02C;
-    public const uint IOCTL_ATA_PASS_THROUGH_DIRECT = 0x0004D030;
-    public const uint IOCTL_SCSI_MINIPORT = 0x0004D008;
     public const uint IOCTL_DISK_GET_LENGTH_INFO = 0x0007405C;
     public const uint IOCTL_DISK_GET_DRIVE_GEOMETRY_EX = 0x000700A0;
 
@@ -51,13 +57,6 @@ internal static class ApiNativas
 
     // ---- Status SMART predito (IOCTL_STORAGE_PREDICT_FAILURE) ----
     public const int PredictFailureIsFailurePredicted = 1;
-
-    // ---- Comandos ATA (ATA/ATAPI-8 e revisões) ----
-    public const byte AtaSmartDataInputCandidate = 0xD1;
-    public const byte AtaSmartReturnStatus = 0xDA;
-    public const byte AtaIdentifyDeviceCommand = 0xEC;
-    public const byte AtaSmartReadData = 0xD0;
-    public const ushort AtaSmartReadDataInputFeatures = 0x0001;
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     internal static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(

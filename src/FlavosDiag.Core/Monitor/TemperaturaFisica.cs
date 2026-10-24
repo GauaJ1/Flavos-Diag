@@ -23,13 +23,30 @@ public static class TemperaturaFisica
         v >= MinimoValidoCelsius && v <= MaximoValidoCelsius;
 
     /// <summary>
-    /// O sensor devolveu uma sentinela de "não consegui ler"? Caso clássico verificado nesta
-    /// máquina: <c>Core (Tctl/Tdie)</c> com <c>Value = 0</c>, <c>Min = 0</c> e <c>Max = 0</c> —
-    /// nunca variou, então não é um zero medido, é ausência de leitura.
+    /// O sensor devolveu uma sentinela de "não consegui ler"? A decisão é pelo <b>valor</b>, nunca
+    /// por <c>Min == Max</c>.
     /// </summary>
-    public static bool EhSentinela(double? valor, double? minimo, double? maximo)
+    /// <remarks>
+    /// A versão anterior também tratava <c>Min == Max</c> como ausência de leitura, com o argumento
+    /// de que um sensor que "nunca variou" não estaria medindo. Estava errada, e o erro foi medido
+    /// nesta máquina: <c>Min</c> e <c>Max</c> são acumulados desde a abertura da sessão, então
+    /// <c>Min == Max</c> é verdade em toda primeira leitura, e continua verdade para qualquer sensor
+    /// estável e de resolução de 1 °C. O <c>GPU Core</c> desta máquina devolveu
+    /// <c>46 (min 46, max 46)</c> em três leituras ao longo de 5 s — uma leitura perfeitamente boa,
+    /// que a regra antiga descartava. O caso do dono (CPU <c>0 / Min 0 / Max 0</c>) continua sendo
+    /// tratado, porque o <b>valor</b> 0 já é sentinela por si só.
+    /// <para>
+    /// Estabilidade só é suspeita quando é improvável: sensor de CPU, sob carga, com o valor
+    /// idêntico por muito tempo. Isso é <see cref="QualidadeSensor.Suspeito"/>, decidido pelo
+    /// coletor ao longo do tempo — não aqui, que avalia uma amostra isolada.
+    /// </para>
+    /// </remarks>
+    public static bool EhSentinela(double? valor, double? minimo = null, double? maximo = null)
     {
-        if (valor is not { } v || double.IsNaN(v))
+        _ = minimo;
+        _ = maximo;
+
+        if (valor is not { } v || double.IsNaN(v) || double.IsInfinity(v))
         {
             return true;
         }
@@ -43,18 +60,7 @@ public static class TemperaturaFisica
 
         // Qualquer valor fora da faixa utilizável (por exemplo -128, outro código de erro comum)
         // não é temperatura: se não passa em Valida, não é leitura.
-        if (!Valida(v))
-        {
-            return true;
-        }
-
-        // Sensor que nunca variou: a fonte não está medindo nada.
-        if (minimo is { } min && maximo is { } max && min == max)
-        {
-            return true;
-        }
-
-        return false;
+        return !Valida(v);
     }
 
     /// <summary>
@@ -71,19 +77,24 @@ public static class TemperaturaFisica
         var textoMax = maximo is { } mx ? mx.ToString("0.#", FormatacaoBr.Cultura) : "—";
         var textoValor = valor.Value.ToString("0.#", FormatacaoBr.Cultura);
 
+        if (double.IsInfinity(valor.Value))
+        {
+            return "o sensor devolveu um valor infinito, que não é uma temperatura";
+        }
+
         if (valor.Value == 0)
         {
             return $"devolveu 0 °C (mín. {textoMin}, máx. {textoMax}); 0 é sentinela de 'sem leitura', não temperatura";
         }
 
-        if (minimo is { } mi && maximo is { } ma && mi == ma)
-        {
-            return $"o valor não varia (mín. {textoMin}, máx. {textoMax}); a fonte não está medindo";
-        }
-
         if (valor.Value == 255)
         {
             return "devolveu 255 °C, sentinela de 'sem leitura'";
+        }
+
+        if (valor.Value is -127 or -128)
+        {
+            return $"devolveu {textoValor} °C, código de erro do sensor (sem leitura)";
         }
 
         return $"valor fora da faixa utilizável ({textoValor} °C; esperado entre {MinimoValidoCelsius:0} e {MaximoValidoCelsius:0} °C)";
