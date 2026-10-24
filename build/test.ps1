@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$SemBuild,
     [string]$Configuracao = 'Debug'
 )

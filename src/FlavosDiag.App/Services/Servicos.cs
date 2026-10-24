@@ -149,8 +149,8 @@ public sealed class Servicos : IDisposable
                 Bateria = new FakeBateriaProvider(Fixtures.Bateria()),
                 Rede = new FakeRedeProvider(Fixtures.Rede()),
                 Gpu = new GpuProviderIndisponivel("Modo demonstração: teste de GPU não é executado com dados fictícios; o inventário de GPU aparece em Sistema."),
-                Memoria = new MemoriaIndisponivel("Disponível na Fase 3."),
-                CargaCpu = new CargaCpuIndisponivel("Disponível na Fase 3."),
+                Memoria = new MemoriaIndisponivel("Teste de memória indisponível no modo de demonstração."),
+                CargaCpu = new CargaCpuIndisponivel("Carga de CPU indisponível no modo de demonstração."),
                 Elevacao = new FakeElevacaoService(),
             };
         }

@@ -498,4 +498,90 @@ pontos: 16,5 | fps médio: 161,5
 ---
 ## Fase 5 — Checklist, laudo, configurações e empacotamento
 
-Pendente.
+### Entregue
+
+| Item | Situação |
+|---|---|
+| Telas reais de Disco, Memória, CPU, GPU, Bateria e Rede (antes eram esqueletos de 10 linhas) | pronto |
+| Checklist assistido com marcação por item | pronto |
+| Tela de configurações (identificação, rede, laudo, mascaramento, pasta) | pronto |
+| Pacote portátil autocontido em `dist/FlavosDiag-0.5.0-win-x64/` | pronto — executado e verificado |
+| `licenses/` com os textos das bibliotecas efetivamente distribuídas | pronto |
+| `LEIA-ME.txt` na distribuição | pronto |
+| `docs/SCHEMA-LAUDO.md` | pronto — conferido contra um laudo realmente gerado |
+| `docs/ROTEIRO-TESTE-MANUAL.md` | pronto |
+| `README.md` | pronto |
+
+### Evidência de build
+
+```
+PS> dotnet build FlavosDiag.sln -c Release -warnaserror --nologo -v q
+    0 Aviso(s)
+    0 Erro(s)
+```
+
+### Evidência de teste
+
+```
+PS> powershell -ExecutionPolicy Bypass -File .\build\test.ps1
+Total: 93 | Aprovados: 93 | Falhas: 0 | Ignorados: 0
+```
+
+### Evidência de sala limpa e codificação
+
+```
+PS> powershell -ExecutionPolicy Bypass -File .\build\cleanroom.ps1
+CLEAN ROOM: nenhum achado.
+
+PS> dotnet run --project tools\ChecagemEncoding -c Debug
+Arquivos com problema: 0
+```
+
+### Evidência do pacote portátil
+
+```
+PS> powershell -ExecutionPolicy Bypass -File .\build\publish.ps1
+
+PACOTE GERADO
+  pasta:    ...\dist\FlavosDiag-0.5.0-win-x64
+  versão:   0.5.0
+  arquivos: 306
+  tamanho:  174 MB
+  licenças: 11 arquivo(s) em licenses/
+```
+
+O executável **do pacote** foi iniciado e permaneceu com a janela aberta após 14 segundos (encerrado por
+mim logo depois). Isso confirma que o pacote autocontido roda, não apenas que foi gerado.
+
+### Problemas encontrados e corrigidos nesta fase
+
+1. **Sete telas eram esqueletos** exibindo textos como "Sensores e testes de CPU serão habilitados na
+   Fase 3" — promessa de recurso futuro, exatamente o que a regra proíbe, e referenciando fases já
+   concluídas. Foram substituídas por telas que mostram dados reais ou o motivo da ausência.
+2. **`Padroes` do teste de memória é uma lista de nomes**, e a tela chamava `.ToString()`, o que exibiria o
+   nome do tipo em vez dos padrões. Corrigido para listar os nomes.
+3. **O pacote portátil ia inteiro para o Git** (174 MB). `dist/` agora está no `.gitignore`.
+4. **O scanner de sala limpa varria `dist/`**, acusando centenas de binários do próprio .NET como
+   "binário versionado". Saídas de build passaram a ser ignoradas, como `bin/` e `obj/`.
+5. **Scripts PowerShell gravados sem BOM** falhavam com erro de sintaxe ao ler acentos. Os três scripts
+   passaram a ser gravados com BOM.
+6. **O gerador de pacote falhava de propósito** quando encontrava pacote sem aviso de licença mapeado —
+   e isso aconteceu duas vezes, revelando nomes reais (`ramspdtoolkit-ndd`, pacotes `runtime.*`). O
+   comportamento é intencional: melhor parar do que distribuir sem o aviso legal.
+7. **Nove avisos de nullable** viravam erro com `-warnaserror`, incluindo um que mascarava o problema do
+   item 2.
+
+### O que NÃO foi verificado
+
+- **Nenhum teste em hardware real das telas novas**: as telas foram abertas e o app rodou, mas não houve
+  clique humano em cada botão de cada tela. Isso está no roteiro manual.
+- **Elevação**: nada foi executado como administrador. Sensores de temperatura e dados de disco que exigem
+  privilégio não foram confirmados.
+- **NVMe e bateria de notebook**: o equipamento de desenvolvimento não tem nenhum dos dois.
+- **Atributos SMART ATA**: recusados pelo controlador nesta máquina (registrado na Fase 2).
+- **Estresse de CPU, teste de memória e prova de GPU**: só rodaram em hardware a prova de GPU; estresse de
+  CPU e teste de memória **não** foram executados em hardware real por regra própria do projeto.
+- **Instalação em máquina limpa sem .NET**: o pacote foi executado nesta máquina, que tem o .NET
+  instalado, então o autocontido não foi provado em ambiente sem runtime.
+- **SmartScreen/antivírus**: o executável não é assinado; o comportamento em máquina de cliente não foi
+  observado.

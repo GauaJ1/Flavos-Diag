@@ -20,7 +20,7 @@ $padrao = [regex]::new(($proibidos -join '|'), 'IgnoreCase')
 $pastas = @('src', 'tests', 'docs')
 $arquivosRaiz = @('README.md')
 $extTexto = @('.cs', '.xaml', '.resx', '.md', '.json', '.txt', '.csproj', '.props', '.yml', '.yaml', '.xml', '.ps1', '.py', '.sh', '.config')
-$pularPastas = @('bin', 'obj', '.git', 'node_modules', '.vs', '.claude', 'TestResults', '.skills')
+$pularPastas = @('bin', 'obj', '.git', 'node_modules', '.vs', '.claude', 'TestResults', '.skills', 'dist', 'artifacts')
 $extBin = @('.exe', '.dll', '.sys')
 
 $permitidos = @{}

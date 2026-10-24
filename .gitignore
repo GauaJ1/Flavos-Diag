@@ -12,3 +12,6 @@ tools/**/bin/
 tools/**/obj/
 # Cadeia de suprimentos: os arquivos de trava de pacotes DEVEM ser versionados
 !packages.lock.json
+
+# Pacote portatil gerado por build/publish.ps1 (artefato de build, nao vai para o repositorio)
+dist/
