@@ -38,7 +38,20 @@ Algoritmo (`VereditoConsolidador.Agregar`):
 - Total < 4 GiB ⇒ **Atenção** (informativo: pode ser limitante).
 - Módulo com capacidade 0/ilegível ⇒ **Atenção**.
 - Caso contrário ⇒ **OK**.
-- O teste rápido interno **não** altera este veredito; o resultado (erros encontrados) sobrescreve para **Falha** se houver discrepância de padrão.
+- O teste rápido interno **não** altera o veredito de inventário. Ele tem regra própria (3.2.1) porque responde a uma pergunta diferente: "a memória grava e devolve o que foi gravado?".
+
+#### 3.2.1 Memória — teste rápido de padrões
+
+| Situação | Veredito | Texto no laudo |
+|---|---|---|
+| Nada foi medido (memória livre ilegível, falta de memória, cancelado antes de concluir um padrão) | **Inconclusivo** | "Não foi possível testar a memória: <causa>." |
+| Nenhuma divergência nos padrões testados | **Inconclusivo** | "Nenhuma divergência nos padrões testados. Isso não prova que a memória está perfeita: é um teste rápido, não um teste de estabilidade prolongado." |
+| Uma divergência | **Atenção** | "Uma única divergência. Repita o teste antes de condenar o módulo." |
+| Divergências em padrões distintos (duas execuções seguidas) | **Falha** | "Divergências em padrões distintos indicam defeito na memória: troque o módulo e teste novamente." |
+
+Regra de ouro desta categoria: **teste rápido sem erro nunca vira OK.** Um OK afirmaria que a memória está boa, e um teste de segundos em um buffer não sustenta essa afirmação — o teste de boot completo é o único que cobre toda a memória física em milhares de passadas.
+
+Tamanho do teste (decisão própria, em `PROCEDENCIA.md` P3-09a): 50 % da memória física **livre**, teto de 2 GiB, piso de 256 MiB. Cobertura = bytes testados / RAM total, sempre exibida junto do veredito para o técnico saber o que foi realmente coberto.
 
 ### 3.3 Disco
 Por disco:

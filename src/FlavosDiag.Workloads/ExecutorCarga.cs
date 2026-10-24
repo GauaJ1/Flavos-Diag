@@ -102,7 +102,33 @@ public sealed class ExecutorCarga
             }
             else
             {
-                parar.Wait(duracao, cancelamento);
+                // Mesmo sem progresso, o predicado de parada precisa ser avaliado periodicamente:
+                // é ele que amostra a temperatura e protege o equipamento.
+                // Espera até a duração ou até o cancelamento, e então encerra normalmente:
+                // cancelar é uma parada legítima (o motivo é registrado), não uma exceção.
+                var restante = duracao - relogio.Elapsed;
+                while (restante > TimeSpan.Zero)
+                {
+                    if (cancelamento.IsCancellationRequested)
+                    {
+                        parar.Set();
+                        break;
+                    }
+
+                    var passo = restante > TimeSpan.FromMilliseconds(100) ? TimeSpan.FromMilliseconds(100) : restante;
+                    if (parar.Wait(passo))
+                    {
+                        break;
+                    }
+
+                    if (deveParar())
+                    {
+                        parar.Set();
+                        break;
+                    }
+
+                    restante = duracao - relogio.Elapsed;
+                }
             }
 
             parar.Set();
@@ -112,7 +138,7 @@ public sealed class ExecutorCarga
             }
 
             return new ResumoExecucao(relogio.Elapsed, Interlocked.Read(ref ciclos), erros);
-        }, cancelamento);
+        });
     }
 }
 

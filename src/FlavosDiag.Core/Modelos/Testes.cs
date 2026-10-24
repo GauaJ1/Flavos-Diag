@@ -108,14 +108,24 @@ public sealed record ResultadoBenchmarkGpu
     public required string TextoAviso { get; init; }
 }
 
+public enum StatusTesteMemoria
+{
+    NaoExecutado = 0,
+    SemErro = 1,
+    Erro = 2,
+}
+
 public sealed record ResultadoTesteMemoria
 {
     public required DateTimeOffset ExecutadoEm { get; init; }
 
+    /// <summary>Bytes efetivamente testados (0 quando nada rodou).</summary>
     public required long BytesTestados { get; init; }
 
+    /// <summary>Padrões que chegaram a ser concluídos.</summary>
     public required IReadOnlyList<string> Padroes { get; init; }
 
+    /// <summary>Quantidade de palavras divergentes encontradas.</summary>
     public required long ErrosDetectados { get; init; }
 
     public required TimeSpan Duracao { get; init; }
@@ -123,4 +133,22 @@ public sealed record ResultadoTesteMemoria
     public required bool Cancelado { get; init; }
 
     public required string AvisoTexto { get; init; }
+
+    /// <summary>Primeiro deslocamento (em bytes) com divergência; nulo quando não houve erro.</summary>
+    public long? PrimeiroDeslocamentoErro { get; init; }
+
+    /// <summary>Bytes testados dividido pela memória física total, em porcentagem.</summary>
+    public double CoberturaPercentual { get; init; }
+
+    public StatusTesteMemoria Status { get; init; }
+
+    /// <summary>
+    /// Veredito da memória. Teste rápido sem erro continua <c>Inconclusivo</c>: ele não prova integridade.
+    /// </summary>
+    public Leitura<FlavosDiag.Core.Vereditos.Veredito> VereditoMemoria { get; init; } =
+        Leitura<FlavosDiag.Core.Vereditos.Veredito>.NaoSuportado("Teste de memória não executado.");
+
+    public long MemoriaLivreBytes { get; init; }
+
+    public long MemoriaTotalBytes { get; init; }
 }

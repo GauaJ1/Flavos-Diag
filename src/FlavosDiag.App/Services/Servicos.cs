@@ -161,13 +161,13 @@ public sealed class Servicos : IDisposable
             Demonstracao = false,
             Wmi = wmi,
             Inventario = new InventarioWmiProvider(wmi, ambiente, new DxgiInfo()),
-            Sensores = new SensoresIndisponiveis(),
+            Sensores = new FlavosDiag.Providers.Sensores.SensoresHardwareFactory(),
             Discos = new FlavosDiag.Providers.Discos.DiscosWindowsProvider(),
             Bateria = new FlavosDiag.Providers.Bateria.BateriaWindowsProvider(),
             Rede = new FlavosDiag.Providers.Rede.RedeWindowsProvider(),
             Gpu = new GpuProviderIndisponivel("Disponível na Fase 4."),
-            Memoria = new MemoriaIndisponivel("Disponível na Fase 3."),
-            CargaCpu = new CargaCpuIndisponivel("Disponível na Fase 3."),
+            Memoria = new FlavosDiag.Workloads.TesteMemoriaRunner(),
+            CargaCpu = new FlavosDiag.Workloads.CargaCpuRunner(),
             Elevacao = new ElevacaoService(ambiente),
         };
     }

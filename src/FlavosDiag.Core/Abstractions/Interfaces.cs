@@ -84,7 +84,11 @@ public interface IGpuProvider
 
 public interface ITesteMemoriaProvider
 {
-    Task<ResultadoTesteMemoria> TestarAsync(long bytes, Func<double, bool>? deveParar, CancellationToken cancelamento);
+    /// <summary>
+    /// Executa o teste de memória. <paramref name="bytes"/> &lt;= 0 usa o tamanho padrão seguro.
+    /// O cancelamento é verificado a cada bloco de trabalho.
+    /// </summary>
+    Task<ResultadoTesteMemoria> TestarAsync(long bytes, IProgress<double>? progresso, CancellationToken cancelamento);
 }
 
 /// <summary>Executa cargas de estresse/benchmark de CPU.</summary>

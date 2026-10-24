@@ -154,7 +154,25 @@ Fontes: [ATA/ATAPI Command Set (INCITS T13)](https://www.t13.org/), [NVMe 1.4/2.
 ### E4 — Memória
 - Inventário (E1).
 - Diagnóstico nativo do Windows: `mdsched.exe` (Windows Memory Diagnostic) com confirmação (exige reinício). Só re-agenda com confirmação explícita.
-- Teste rápido de padrões in-process: escrita/leitura de padrões (0x00, 0xFF, AA, 55, walking ones, endereço) em buffer limitado (padrão 256 MB, configurável), comacles e verificação; aviso explícito de que **não substitui** um teste de boot completo.
+- **Teste rápido de padrões in-process** (implementado em `TesteMemoriaRunner`). Técnicas genéricas de teste de memória, escolhidas por decisão própria do projeto (ver `PROCEDENCIA.md`):
+
+  | Padrão | O que detecta |
+  |---|---|
+  | `0x00` — todos os bits em zero | Célula presa em 1; curto entre linha e alimentação. |
+  | `0xFF` — todos os bits em um | Célula presa em 0; trilha aberta. |
+  | `0x55`/`0xAA` — bits alternados | Acoplamento entre bits vizinhos (um bit "puxa" o outro). |
+  | `índice × constante` (palavra de 64 bits, `unchecked`) | Cada endereço tem valor único: detecta troca de blocos, linha de cache repetida e endereço que "espelha" outro. |
+  | complemento do padrão anterior | Escrito em seguida ao original: detecta célula que não aceita a transição 0→1 ou 1→0 (falha de retenção). |
+
+- Tamanho: padrão = 50 % da memória física **livre** (`GlobalMemoryStatusEx`/`ullAvailPhys`), com teto de 2 GiB e piso de 256 MiB. Nunca usa "memória total disponível" como proxy de memória livre.
+- Processamento em blocos de 4 MiB, com cancelamento verificado a cada bloco (`Span`/`MemoryMarshal`, sem LINQ nos laços de conferência). O botão "Parar" responde em menos de 1 segundo.
+- Resultado registra: bytes efetivamente testados (0 se nada rodou), padrões concluídos, número de palavras divergentes, primeiro deslocamento com erro, cobertura (bytes testados / RAM total), memória livre, duração e motivo.
+- **Veredito** (regra explícita, em `REGRAS-VEREDITO.md`):
+  - Sem erro → **Inconclusivo**. Um teste rápido não prova integridade; nunca vira OK.
+  - Uma divergência → **Atenção**, com instrução de repetir o teste.
+  - Divergências em padrões distintos (duas execuções seguidas) → **Falha**, com recomendação de trocar o módulo.
+  - Nada medido (memória livre ilegível, falta de memória, cancelado antes de concluir um padrão) → **Inconclusivo** com a causa.
+- Aviso explícito na interface e no laudo: este teste **não substitui** o teste de boot completo do Windows.
 - Checklist para memória externa por pendrive (K10) registrada manualmente.
 
 Fontes: [Windows Memory Diagnostic (mdsched)](https://learn.microsoft.com/windows-server/administration/windows-commands/mdsched), [Windows Memory Diagnostic](https://learn.microsoft.com/windows-hardware/drivers/devtest/windows-memory-diagnostics).

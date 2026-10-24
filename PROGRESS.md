@@ -345,8 +345,87 @@ relatório final).
 ---
 ## Fase 3 — Sensores, estresse e benchmark
 
-Pendente.
+### Entregue
 
+| Item | Situação |
+|---|---|
+| E2 Sensores reais atrás de `ISensorProvider` (temperatura, clock, carga, potência, tensão, ventoinha) | pronto; sem elevação ou driver → Inconclusivo com causa |
+| E5 Estresse de CPU com limites, botão de parada e motivo registrado | pronto |
+| E5 Teto obrigatório de 2 minutos quando não há sensor de temperatura | pronto |
+| E6 Benchmark de CPU (5 amostras de 3 s, mediana, pontuação própria) | pronto |
+| E4 Teste de memória com padrões, cancelável, com veredito próprio | pronto |
+
+### Evidência de build
+
+```
+PS> dotnet build FlavosDiag.sln -c Release -warnaserror --nologo -v q
+Compilação com êxito.
+    0 Aviso(s)
+    0 Erro(s)
+```
+
+### Evidência de teste
+
+```
+PS> dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 83 | Aprovados: 83 | Falhas: 0 | Ignorados: 0
+```
+
+### Evidência de clean room
+
+```
+PS> powershell -NoProfile -ExecutionPolicy Bypass -File .\build\cleanroom.ps1
+CLEAN ROOM: nenhum achado.
+```
+
+### Bugs reais que os testes encontraram (todos corrigidos)
+
+Os testes desta fase não passaram de primeira, e o motivo importa: eles encontraram defeitos no código
+de produção, não nos testes.
+
+1. **O estresse não executava trabalho nenhum.** `CargaCpuRunner` passava uma lista de cargas **vazia**
+   para o executor. O laço `for` sobre zero cargas nunca girava, então nenhum trabalho era feito e — pior —
+   o predicado de parada nunca era chamado, ou seja, **a proteção por temperatura não valia nada**. O teste
+   "houve trabalho" falhou e expôs isso.
+2. **A temperatura nunca era amostrada.** O intervalo entre leituras era subtraído de dois cronômetros
+   diferentes (`relogio.Elapsed - ultimoRelogio.Elapsed`), o que dava diferença negativa e bloqueava toda
+   leitura depois da primeira. Com o cronômetro de referência zerado, um teste curto também nunca amostrava.
+   Um teste de estresse que não lê temperatura é um teste que não protege o equipamento.
+3. **Cancelar virava exceção em vez de parada.** O executor usava `ManualResetEventSlim.Wait(duracao, token)`,
+   que lança `OperationCanceledException`; o "Parar" do usuário virava falha em vez de motivo registrado.
+4. **Sem barra de progresso, a parada era ignorada.** No caminho sem `IProgress`, o predicado de parada
+   não era avaliado de tempos em tempos.
+
+Os quatro são de segurança: três deles afetavam justamente as travas que protegem o equipamento do cliente.
+
+### Teste de memória — reescrito conforme revisão
+
+| Antes | Agora | Por quê |
+|---|---|---|
+| `GC.GetGCMemoryInfo().TotalAvailableMemoryBytes` como "memória livre" | `GlobalMemoryStatusEx` (`ullAvailPhys`) | "Total disponível" é um limite de política do GC, não a memória física livre. Superestima e pode levar o PC do cliente a paginar. |
+| 75 % da memória, mínimo 16 MiB | 50 % da livre, teto 2 GiB, piso 256 MiB | Menos risco de paginação; piso maior dá significado ao teste. |
+| Padrão caía no mínimo | Pedido ≤ 0 usa o **padrão** (maior tamanho seguro) | "Padrão = mínimo" subtestava a máquina em silêncio. |
+| Dois `byte[]` grandes (fill/verify) | Blocos de 4 MiB com `Span`/`MemoryMarshal` | Dobrava a memória exigida e não permitia parada rápida. |
+| `deveParar` (callback) | `IProgress<double>` + `CancellationToken` | Parada responde em menos de 1 s, verificada a cada bloco. |
+| 5 padrões, dois por índice de byte | `0x00`, `0xFF`, `0x55/0xAA`, `índice×constante` (64 bits), complemento | Padrões de 64 bits e complemento pegam falhas de retenção que padrões de 8 bits não pegam. |
+| Sem veredito | Teste rápido sem erro → **Inconclusivo**; 1 divergência → Atenção; divergências em padrões distintos → Falha | Um teste de segundos não sustenta a afirmação "a memória está boa". |
+
+Nenhum teste desta fase roda estresse real: as durações são de milissegundos e os sensores são fake, conforme a
+regra de não estressar hardware durante o desenvolvimento autônomo.
+
+### O que NÃO foi verificado (franqueza)
+
+- **Sensores em hardware real**: a leitura depende de driver de kernel e de elevação. A sessão foi validada sem
+  elevação apenas no caminho de falha (devolve Inconclusivo com causa). **Não** foi confirmada a leitura real de
+  temperatura nesta máquina — isso entra no roteiro manual.
+- **Estresse real**: proibido durante o desenvolvimento. Os limites, a parada e os motivos estão cobertos por
+  testes com sensores fake e durações curtas; a execução real (minutos, CPU aquecendo) não foi feita.
+- **Teste de memória**: executado apenas com tamanhos pequenos (256 MiB) e memória livre injetada nos testes de
+  borda. Não foi rodado com 2 GiB nem em máquina com memória defeituosa.
+- **Benchmark de CPU**: a normalização e a mediana têm teste; uma execução completa (5 × 3 s × 2 modos) não foi
+  feita nesta rodada.
+
+---
 ## Fase 4 — GPU
 
 Pendente.

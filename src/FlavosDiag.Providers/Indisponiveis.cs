@@ -125,7 +125,7 @@ public sealed class MemoriaIndisponivel : ITesteMemoriaProvider
         _causa = causa;
     }
 
-    public Task<ResultadoTesteMemoria> TestarAsync(long bytes, Func<double, bool>? deveParar, CancellationToken cancelamento) =>
+    public Task<ResultadoTesteMemoria> TestarAsync(long bytes, IProgress<double>? progresso, CancellationToken cancelamento) =>
         Task.FromException<ResultadoTesteMemoria>(new NotSupportedException(_causa));
 }
 
