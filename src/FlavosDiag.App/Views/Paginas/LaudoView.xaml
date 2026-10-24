@@ -39,7 +39,7 @@
                                 Command="{Binding ExportarCommand}" IsEnabled="{Binding PodeExportar}"
                                 AutomationProperties.Name="Exportar laudo em JSON e PDF">
                             <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource Icone}" Stroke="White" Margin="0,0,10,0" Data="{StaticResource IconePasta}" />
+                                <Path Style="{StaticResource Icone}" Stroke="{DynamicResource FlavosTextoNoDestaque}" Margin="0,0,10,0" Data="{StaticResource IconePasta}" />
                                 <TextBlock Text="Exportar JSON + PDF" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>

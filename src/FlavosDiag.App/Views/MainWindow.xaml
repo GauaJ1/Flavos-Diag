@@ -42,7 +42,7 @@
                 <StackPanel DockPanel.Dock="Top" Margin="20,22,20,18">
                     <StackPanel Orientation="Horizontal">
                         <Border Width="30" Height="30" CornerRadius="8" Background="{DynamicResource FlavosPetroleo}">
-                            <Path Data="M8,21 L13,12 L18,21 L23,7" Stretch="Uniform" Stroke="White" StrokeThickness="2"
+                            <Path Data="M8,21 L13,12 L18,21 L23,7" Stretch="Uniform" Stroke="{DynamicResource FlavosTextoNoDestaque}" StrokeThickness="2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Margin="6" />
                         </Border>
                         <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">

@@ -132,8 +132,15 @@ Resultado observado: ______________________________________________
 
 ## 4A. Verificações de interface (dependem de clique humano)
 
-Os testes automatizados cobrem os comandos, mas não provam que o botão na tela está ligado ao comando
-certo, nem que o desenho está legível. Estes quatro passos fecham essa lacuna.
+Os testes automatizados cobrem os comandos, e uma verificação por UI Automation confirmou que os
+botões existem, estão visíveis e acionam o comando certo (ver `PROGRESS.md`). O que **falta** é o julgamento
+humano: aparência, contraste e legibilidade nos dois temas, e o comportamento em telas físicas diferentes.
+
+**Já confirmado automaticamente (não precisa repetir, mas repetir não custa):** os 11 itens do menu navegam
+por acionamento real; cancelar para em 0,06 s; a janela abre em 1240×720 numa tela 1366×768 e os botões do
+rodapé ficam visíveis.
+
+**O que estes passos ainda decidem:** o desenho está correto e legível?
 
 ### 4A.1 Clicar em cada item do menu
 
@@ -144,7 +151,8 @@ e também para **Configurações** (botão do rodapé):
 2. Confira: o título no topo muda para o nome da página; o conteúdo muda; **o item clicado fica destacado**
    e os outros não.
 
-- **Esperado:** os 11 itens navegam. Se algum não fizer nada, o defeito voltou.
+- **Esperado:** os 11 itens navegam. Se algum não fizer nada, o defeito voltou. (Confirmado por UI
+  Automation: 10 de 10 categorias + Configurações.)
 - **Esperado em Configurações:** o botão do rodapé fica destacado como os demais.
 - **Esperado:** clicar repetidamente no mesmo item não "pisca" nem perde o foco do teclado.
 
@@ -171,7 +179,7 @@ Resultado observado: ______________________________________________
 1. Na aba **Resumo**, clique em **Diagnóstico rápido**.
 2. Assim que a barra começar a andar, clique em **Cancelar**.
 
-- **Esperado:** a execução para **em menos de 2 segundos**.
+- **Esperado:** a execução para **em menos de 2 segundos**. (Medido por UI Automation: 0,06 s.)
 - **Esperado:** a tela mostra "Diagnóstico cancelado" e **não** mostra erro nem veredito **Falha** —
   cancelar é escolha do técnico, não defeito do equipamento.
 - **Esperado:** o botão "Diagnóstico rápido" volta a ficar clicável (dá para começar de novo).

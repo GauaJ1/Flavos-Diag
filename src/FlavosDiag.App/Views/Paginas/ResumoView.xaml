@@ -34,7 +34,7 @@
                                 Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}, ConverterParameter=inverter}"
                                 AutomationProperties.Name="Iniciar diagnóstico rápido" ToolTip="Iniciar diagnóstico rápido (F5)">
                             <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource Icone}" Stroke="White" Margin="0,0,10,0" Data="M13,2 L4,14 H11 L10,22 L20,9 H13 Z" />
+                                <Path Style="{StaticResource Icone}" Stroke="{DynamicResource FlavosTextoNoDestaque}" Margin="0,0,10,0" Data="M13,2 L4,14 H11 L10,22 L20,9 H13 Z" />
                                 <TextBlock Text="Diagnóstico rápido" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>

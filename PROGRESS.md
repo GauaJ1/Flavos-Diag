@@ -709,3 +709,56 @@ chaves de cor no tema escuro ...................... 18 (+ FlavosFonte, que é fo
   resolução real diferente da desta máquina.
 - **Cancelamento durante cada etapa específica**: o teste cancela logo no início; não foram exercitadas
   todas as etapas individualmente.
+
+### Verificação complementar por automação de interface (UI Automation)
+
+Depois de fechar os oito itens, as correções foram conferidas **na janela real**, dirigindo os controles
+pela árvore de acessibilidade — não pelo ViewModel. Isso cobre o que o teste automatizado não alcança
+(binding de XAML, layout, botão visível e acionável). Nada desta seção é simulação: são cliques enviados
+ao aplicativo em execução.
+
+**Tela desta máquina: 1366×768, área útil 1366×720** — exatamente o caso mais apertado do item 6.
+
+```
+janela ao abrir ................ 1240x720 em (63,0)
+cabe na tela 1366x768? ......... True
+dentro da área útil 1366x720? .. True
+botão 'Alternar tema'   ........ L=83 T=561 H=38 — totalmente visível, IsEnabled=True
+botão 'Configurações'   ........ L=83 T=607 H=38 — totalmente visível
+```
+
+**Navegação por clique real (item 1):** 10 de 10 itens do menu abriram a página correspondente, com o
+título conferido após cada clique. Configurações também abriu pelo botão do rodapé.
+
+**Cancelamento real (item 2):** o botão "Cancelar" ficou acionável 250 ms após iniciar, o clique parou a
+execução em **0,06 s** (limite: 2 s) e o botão "Iniciar diagnóstico rápido" voltou a aparecer.
+
+### Defeito encontrado nesta verificação complementar
+
+Três ícones ainda usavam `Stroke="White"` fixo (MainWindow, ResumoView, LaudoView) e escaparam da correção
+do tema: ficam sobre o verde-petróleo, que **clareia no tema escuro** — no escuro esses traços perderiam
+contraste. Corrigidos para `DynamicResource FlavosTextoNoDestaque`.
+
+Para isso não voltar em silêncio, foi criado o teste **"nenhuma cor fixa nas telas"**, que varre todos os
+`.xaml` de View (fora os dicionários de tema) e reprova `White`, `Black` e `#RRGGBB` em propriedades de cor.
+
+O teste foi **provado por sabotagem**: reintroduzindo `Foreground="White"` de propósito em `ResumoView.xaml`,
+ele falhou apontando `ResumoView.xaml:37: Foreground="White"`. Com o arquivo restaurado, volta a passar.
+
+### Evidência final
+
+```
+PS> dotnet build FlavosDiag.sln -warnaserror --nologo -v q
+    0 Aviso(s)
+    0 Erro(s)
+
+PS> dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 134 | Aprovados: 134 | Falhas: 0 | Ignorados: 0
+```
+
+### Limite desta verificação
+
+A automação de interface usa **UI Automation**, que aciona o controle como um leitor de tela ou um teste de
+acessibilidade — não é um clique de mouse em coordenada de tela. Confirma que o botão existe, está visível,
+habilitado e ligado ao comando certo; **não** confirma aparência, cores percebidas nem contraste visual.
+A conferência visual dos dois temas e das resoluções/escalas continua no roteiro manual, seção 4A.

@@ -36,6 +36,7 @@ public static class InterfaceTests
         ("Interface: trocar de tema troca as chaves de cor e volta", TrocaDeTemaAtualizaCores),
         ("Interface: trocar de tema não deixa estilo de tema no dicionário escuro", TemaEscuroSoTemCores),
         ("Interface: todo item do menu tem ícone (não fica sem desenho)", TodoItemTemIcone),
+        ("Interface: nenhuma cor fixa nas telas (tudo passa pelo tema)", NenhumaCorFixa),
         ("Interface: cancelar o diagnóstico interrompe e não vira Falha", CancelarDiagnostico),
     };
 
@@ -485,6 +486,63 @@ public static class InterfaceTests
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Nenhuma View pode usar cor literal (<c>White</c>, <c>Black</c>, <c>#RRGGBB</c>) em propriedade de
+    /// cor. Uma cor fixa não acompanha a troca de tema: no tema escuro o mesmo branco pode ficar ilegível
+    /// sobre um fundo que clareou. Três ocorrências foram encontradas assim (ícones sobre o verde-petróleo)
+    /// depois de a troca de tema já estar funcionando — por isso esta verificação existe.
+    /// </summary>
+    private static Task NenhumaCorFixa()
+    {
+        // Raiz do repositório a partir da pasta de saída do teste (bin/Debug/net8.0-windows).
+        var raiz = AppContext.BaseDirectory;
+        for (var i = 0; i < 5 && raiz is not null; i++)
+        {
+            var candidato = Path.Combine(raiz, "src", "FlavosDiag.App");
+            if (Directory.Exists(candidato))
+            {
+                raiz = candidato;
+                break;
+            }
+
+            raiz = Path.GetDirectoryName(raiz.TrimEnd(Path.DirectorySeparatorChar));
+        }
+
+        Verificar(raiz is not null && Directory.Exists(raiz), "não foi possível localizar a pasta src/FlavosDiag.App a partir do teste");
+
+        var propriedades = "Stroke|Fill|Foreground|Background|BorderBrush|CaretBrush";
+        var padrao = new System.Text.RegularExpressions.Regex(
+            $@"\b({propriedades})\s*=\s*""(White|Black|#[0-9A-Fa-f]{{3,8}})""");
+
+        var achados = new List<string>();
+        foreach (var arquivo in Directory.EnumerateFiles(raiz!, "*.xaml", SearchOption.AllDirectories))
+        {
+            var nome = Path.GetFileName(arquivo);
+
+            // Os dicionários de tema são justamente onde os valores literais devem morar.
+            if (nome.Equals("Tema.xaml", StringComparison.OrdinalIgnoreCase) ||
+                nome.Equals("TemaEscuro.xaml", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var linhas = File.ReadAllLines(arquivo);
+            for (var n = 0; n < linhas.Length; n++)
+            {
+                var m = padrao.Match(linhas[n]);
+                if (m.Success)
+                {
+                    achados.Add($"{nome}:{n + 1}: {m.Value}");
+                }
+            }
+        }
+
+        Verificar(
+            achados.Count == 0,
+            "cores fixas encontradas nas View (devem usar DynamicResource do tema): " + string.Join("; ", achados));
+
+        return Task.CompletedTask;
+    }
     private static string CorDe(string chave)
     {
         if (Application.Current?.TryFindResource(chave) is System.Windows.Media.SolidColorBrush pincel)
