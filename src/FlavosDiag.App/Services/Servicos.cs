@@ -42,6 +42,12 @@ public sealed class Configuracao
 
     public int JanelaGraficoSegundos { get; set; } = 60;
 
+    /// <summary>
+    /// Temperatura a partir da qual o gráfico de stress destaca a faixa de alerta. Não encerra o
+    /// teste — quem decide parar é o técnico; o destaque evita que ele só perceba depois.
+    /// </summary>
+    public double LimiarAlertaTemperaturaCelsius { get; set; } = 95;
+
     [JsonIgnore]
     public IReadOnlyList<string> AlvosPingLista =>
         AlvosPing.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();

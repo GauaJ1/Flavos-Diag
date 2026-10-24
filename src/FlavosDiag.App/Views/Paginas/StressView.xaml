@@ -1,0 +1,116 @@
+<UserControl x:Class="FlavosDiag.App.Views.Paginas.StressView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:FlavosDiag.App.Views.Controles">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <!-- Controles: o técnico decide quando parar -->
+            <Border Style="{StaticResource Cartao}" Padding="22">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Stress da CPU com temperatura ao vivo" Style="{StaticResource TituloSecao}" FontSize="20" />
+                        <TextBlock Style="{StaticResource TextoSuave}" Margin="0,4,24,0" MaxWidth="640" HorizontalAlignment="Left">
+                            Mantém o processador sob carga e desenha a temperatura segundo a segundo.
+                            Não há tempo limite: o teste só termina quando você clicar em Parar.
+                        </TextBlock>
+                        <TextBlock Margin="0,10,0,0" Style="{StaticResource TextoSuave}"
+                                   Text="{Binding Threads, StringFormat={}{0} threads em uso}" />
+                        <TextBlock Text="{Binding DuracaoTexto}" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FlavosTexto}"
+                                   />
+                        <TextBlock Text="{Binding AvisoTemperatura}" Margin="0,8,0,0" TextWrapping="Wrap" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FlavosAtencao}"
+                                   Visibility="{Binding AvisoTemperatura, Converter={StaticResource TextoVisivel}}" />
+                        <TextBlock Text="{Binding ResumoExecucao}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource FlavosTextoSuave}"
+                                   Visibility="{Binding ResumoExecucao, Converter={StaticResource TextoVisivel}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Top" Orientation="Horizontal">
+                        <Button Style="{StaticResource BotaoSecundario}" Content="Parar" Margin="0,0,8,0" MinHeight="48" MinWidth="110"
+                                Command="{Binding PararCommand}"
+                                Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}}"
+                                AutomationProperties.Name="Parar stress"
+                                ToolTip="Interromper o stress agora" />
+                        <Button Style="{StaticResource BotaoPrimario}" MinWidth="190" MinHeight="48" FontSize="15"
+                                Command="{Binding IniciarCommand}"
+                                Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}, ConverterParameter=inverter}"
+                                AutomationProperties.Name="Iniciar stress" ToolTip="Iniciar stress com monitor de temperatura">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource Icone}" Stroke="{DynamicResource FlavosTextoNoDestaque}" Margin="0,0,10,0" Data="M13,2 L4,14 H11 L10,22 L20,9 H13 Z" />
+                                <TextBlock Text="Iniciar stress" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Leituras atuais -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Cartao}" Padding="16" Margin="0,0,6,0">
+                    <StackPanel>
+                        <TextBlock Text="CPU" Style="{StaticResource TextoSuave}" />
+                        <TextBlock Text="{Binding TemperaturaCpuTexto}" FontSize="24" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FlavosTexto}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Cartao}" Padding="16" Margin="6,0">
+                    <StackPanel>
+                        <TextBlock Text="GPU" Style="{StaticResource TextoSuave}" />
+                        <TextBlock Text="{Binding TemperaturaGpuTexto}" FontSize="24" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FlavosTexto}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Cartao}" Padding="16" Margin="6,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Carga da CPU" Style="{StaticResource TextoSuave}" />
+                        <TextBlock Text="{Binding CargaCpuTexto}" FontSize="24" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FlavosTexto}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Gráfico -->
+            <Border Style="{StaticResource Cartao}" Padding="16" Margin="0,16,0,0">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Temperatura ao longo do tempo" Style="{StaticResource TituloSecao}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="12" Height="3" CornerRadius="2" Background="{DynamicResource FlavosPetroleo}" VerticalAlignment="Center" />
+                            <TextBlock Text="CPU" Style="{StaticResource TextoSuave}" Margin="6,0,14,0" />
+                            <Border Width="12" Height="3" CornerRadius="2" Background="{DynamicResource FlavosOk}" VerticalAlignment="Center" />
+                            <TextBlock Text="GPU" Style="{StaticResource TextoSuave}" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                    <c:GraficoTemperatura Height="260" Margin="0,12,0,0"
+                                          Amostras="{Binding Pontos}"
+                                          LimiarAlerta="{Binding LimiarAlerta}"
+                                          SegundosVisiveis="{Binding JanelaGraficoSegundos}"
+                                          CorCpu="{DynamicResource FlavosPetroleo}"
+                                          CorGpu="{DynamicResource FlavosOk}"
+                                          CorGrade="{DynamicResource FlavosBorda}"
+                                          CorTexto="{DynamicResource FlavosTextoSuave}"
+                                          CorAlerta="{DynamicResource FlavosFalha}"
+                                          AutomationProperties.Name="{Binding ResumoGrafico}" />
+                    <TextBlock Text="{Binding CausaSemLeitura}" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource FlavosAtencao}"
+                               Visibility="{Binding CausaSemLeitura, Converter={StaticResource TextoVisivel}}" />
+                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
+                               Text="A linha é interrompida quando um sensor não entrega leitura válida — o gráfico nunca desenha um valor que não foi medido." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

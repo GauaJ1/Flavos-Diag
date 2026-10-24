@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FlavosDiag.Core;
 using FlavosDiag.Core.Abstractions;
+using FlavosDiag.Core.Benchmark;
 using FlavosDiag.Core.Modelos;
 
 namespace FlavosDiag.Workloads;
@@ -208,13 +209,17 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
             var fabricas = MontadorCarga.Fabrica();
             var executadoEm = DateTimeOffset.Now;
 
+            // Single e multi medem A MESMA carga (a primeira da lista). Antes, o multi somava ciclos
+            // das quatro cargas enquanto o single media só a primeira: os dois números não eram
+            // comparáveis entre si e a relação "single × núcleos ≈ multi" nunca fechava.
+            var workers = Math.Max(1, threads);
+
             var linhas = new List<double>(amostras);
             for (var i = 0; i < amostras; i++)
             {
                 cancelamento.ThrowIfCancellationRequested();
-                progresso?.Report($"Amostra {i + 1} de {amostras} (single)…");
+                progresso?.Report($"Amostra {i + 1} de {amostras} (1 thread)…");
 
-                // Uma carga por núcleo disponível; a marcação "single" roda em 1 thread.
                 var carga = fabricas[0]();
                 var (unidades, _) = MedidorSingle.Medir(
                     carga,
@@ -223,15 +228,15 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                 linhas.Add(unidades);
             }
 
-            var pontuacaoSingle = Pontuacao(Mediana(linhas));
-
             var mult = new List<double>(amostras);
-            var workers = Math.Max(1, threads);
             for (var i = 0; i < amostras; i++)
             {
                 cancelamento.ThrowIfCancellationRequested();
                 progresso?.Report($"Amostra {i + 1} de {amostras} ({workers} threads)…");
-                var executor = new ExecutorCarga(fabricas);
+
+                // Apenas a carga de referência, repetida em cada worker — a mesma do modo single.
+                var cargaRef = fabricas[0];
+                var executor = new ExecutorCarga(new[] { cargaRef });
                 var resumo = executor
                     .ExecutarAsync(workers, PerfilCarga.Pesado, janela, () => false, null, cancelamento)
                     .GetAwaiter()
@@ -240,40 +245,41 @@ public sealed class CargaCpuRunner : ICargaCpuRunner
                 mult.Add(resumo.Ciclos / segundos);
             }
 
-            var pontuacaoMulti = Pontuacao(Mediana(mult));
+            var pontosSingle = PontuacaoCpu.Pontos(PontuacaoCpu.Mediana(linhas));
+            var pontosMulti = PontuacaoCpu.Pontos(PontuacaoCpu.Mediana(mult));
+            var dispersaoSingle = PontuacaoCpu.Dispersao(linhas);
+            var dispersaoMulti = PontuacaoCpu.Dispersao(mult);
+
             progresso?.Report("Benchmark concluído.");
+
+            var ressalva = PontuacaoCpu.AvisoDeInstabilidade(dispersaoSingle, dispersaoMulti);
+            var aviso = $"Pontuação própria do Flavos Diag (versão {PontuacaoCpu.VersaoAtual}). " +
+                        "Não comparável com outros programas; válida apenas entre execuções do próprio Flavos Diag.";
 
             return new ResultadoBenchmarkCpu
             {
                 ExecutadoEm = executadoEm,
-                VersaoAlgoritmo = 1,
-                PontuacaoSingle = Math.Round(pontuacaoSingle, 1),
-                PontuacaoMulti = Math.Round(pontuacaoMulti, 1),
-                AmostrasSingle = linhas.Select(l => Math.Round(Pontuacao(l), 1)).ToList(),
-                AmostrasMulti = mult.Select(l => Math.Round(Pontuacao(l), 1)).ToList(),
+                VersaoAlgoritmo = PontuacaoCpu.VersaoAtual,
+                PontuacaoSingle = Math.Round(pontosSingle, 1),
+                PontuacaoMulti = Math.Round(pontosMulti, 1),
+                AmostrasSingle = linhas.Select(l => Math.Round(PontuacaoCpu.Pontos(l), 1)).ToList(),
+                AmostrasMulti = mult.Select(l => Math.Round(PontuacaoCpu.Pontos(l), 1)).ToList(),
                 ThreadsMulti = workers,
-                TextoAviso = "Pontuação própria do Flavos Diag (versão 1). Não é comparável com outros programas.",
+                TextoAviso = ressalva is null ? aviso : aviso + " " + ressalva,
             };
         }, cancelamento);
     }
 
-    /// <summary>Pontuação própria: unidades por segundo divididas por 1000 (algoritmo versão 1).</summary>
-    public static double Pontuacao(double unidadesPorSegundo) => unidadesPorSegundo / 1000.0;
+    /// <summary>
+    /// Pontuação a partir de unidades por segundo. Mantida como atalho para chamadores antigos;
+    /// a fórmula vive em <see cref="PontuacaoCpu"/>, para não haver duas escalas divergentes.
+    /// </summary>
+    public static double Pontuacao(double unidadesPorSegundo) =>
+        Math.Round(PontuacaoCpu.Pontos(unidadesPorSegundo), 1);
 
     /// <summary>Mediana de uma lista (nunca depende da ordem de chegada).</summary>
-    public static double Mediana(IReadOnlyList<double> valores)
-    {
-        if (valores.Count == 0)
-        {
-            return 0;
-        }
-
-        var ordenados = valores.OrderBy(v => v).ToList();
-        var meio = ordenados.Count / 2;
-        return ordenados.Count % 2 == 1
-            ? ordenados[meio]
-            : (ordenados[meio - 1] + ordenados[meio]) / 2.0;
-    }
+    public static double Mediana(IReadOnlyList<double> valores) =>
+        double.IsNaN(PontuacaoCpu.Mediana(valores)) ? 0 : PontuacaoCpu.Mediana(valores);
 
     private static (bool TemSensor, double? Inicial) SondarTemperatura(Func<AmostraSensores?> leitura)
     {

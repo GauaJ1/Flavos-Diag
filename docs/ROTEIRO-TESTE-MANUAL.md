@@ -213,6 +213,48 @@ Resultado observado por combinação:
 
 ---
 
+## 4B. Stress e benchmark de CPU
+
+Nada aqui roda sozinho: o teste só começa quando você clica em **Iniciar stress**.
+
+1. Abra **Stress** no menu.
+2. Antes de iniciar, confirme que a página mostra `11 threads em uso` (o número varia com a máquina)
+   e o gráfico com a mensagem de que não há amostra ainda.
+3. Clique em **Iniciar stress**.
+4. Observe durante 30 segundos:
+   - A duração sobe a cada segundo (`0,0 s`, `1,0 s`, ...).
+   - A temperatura da GPU começa a aparecer em °C.
+   - A carga da CPU sobe para perto de 100%.
+   - O botão **Parar** fica visível e **Iniciar** desaparece.
+5. Clique em **Parar**. O teste termina imediatamente e aparece um resumo com a duração real, os
+   ciclos concluídos e os erros de cálculo.
+
+O que é esperado e **não** é falha:
+
+| Situação | Por que acontece |
+| --- | --- |
+| "sem leitura" na CPU, com a causa escrita por extenso | Sem elevação, o sensor do Ryzen devolve 0, que é sentinela. O app mostra a causa em vez de desenhar 0 °C. |
+| A linha da CPU fica ausente enquanto a da GPU desenha | Mesmo motivo: só se desenha o que foi medido. |
+| A faixa de alerta não aparece | Ela só aparece se a temperatura passar do limiar configurado (95 °C por padrão). |
+
+5. Abra **Configurações**, mude a temperatura de alerta para `40`, salve e volte a **Stress**. Repita
+   o teste: a faixa vermelha agora aparece assim que a GPU passa de 40 °C — e o teste **continua
+   rodando**. Volte para 95 quando terminar.
+6. Em **Configurações**, tente salvar a temperatura de alerta como `500`. O app precisa recusar com
+   a mensagem "O limiar de alerta precisa estar entre 1 e 120 °C." e não pode gravar o valor.
+
+> Aviso: o stress mantém o processador ocupado. Use em superfície ventilada e não deixe rodando sem
+> acompanhar. O app não encerra sozinho por temperatura — quem decide parar é você.
+
+## 4C. Benchmark de CPU
+
+1. Abra **CPU** no menu e execute o benchmark (pelo botão da própria página).
+2. Confira os dois números: "um núcleo" e "todos os núcleos".
+3. O resultado de todos os núcleos deve ser **maior** que o de um núcleo. Se vier igual, menor, ou
+   com aviso de instabilidade, repita com a máquina ociosa — a medição registrou interferência.
+
+A pontuação é própria do Flavos Diag e não é comparável com a de outros programas.
+
 ## 5. Verificações de honestidade
 
 Estas não dependem de hardware. São conferências de que o programa não "finge".
@@ -257,3 +299,6 @@ Resultado observado: ______________________________________________
 | Troca de tema vista a olho nu | chaves de cor cobertas por teste automatizado; o visual é manual (item 4A.2) |
 | Cancelamento do diagnóstico pela tela | comando coberto por teste automatizado; o clique é manual (item 4A.3) |
 | Janela em 1366×768 / 1920×1080 a 100% e 150% | depende da tela física; manual (item 4A.4) |
+| Gráfico de temperatura ao vivo | desenho verificado por teste de renderização por pixel; a corrida térmica real é manual (item 4B) |
+| Parada do stress pelo técnico | executada por UI Automation nesta máquina (5,9 s, 2.616 ciclos); o clique humano é manual (item 4B) |
+| Aparência do gráfico (cores, legibilidade) | a olho nu é manual (item 4B) |

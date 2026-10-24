@@ -831,3 +831,76 @@ PAGINAS ABERTAS SEM CRASH: 11 de 11
 PS> .\build\cleanroom.ps1          -> CLEAN ROOM: nenhum achado.
 PS> tools\ChecagemEncoding         -> Arquivos com problema: 0
 ```
+
+## Benchmarks visíveis, stress controlável e pontuação coerente
+
+Pedido: benchmarks visíveis com gráfico de temperatura, stress que o utilizador para quando quiser,
+e pontuação do benchmark mais coerente.
+
+### O que mudou
+
+- **Pontuação versão 2.** O modo multi-thread somava ciclos de quatro cargas de pesos muito
+  diferentes, enquanto o single media apenas a primeira. Agora os dois usam a mesma carga e a mesma
+  unidade. `EficienciaEscala` e `Dispersao` dão ao técnico um número para julgar a medição, e uma
+  variação acima de 10% gera ressalva pedindo nova execução.
+- **`OperacoesPorPonto` documentado ao contrário.** O código dividia por 1000 (1 ponto a cada 1000
+  operações/s), mas o comentário escrito dizia "1000 pontos". O comportamento foi mantido e a
+  documentação corrigida: mexer na constante teria invalidado todas as pontuações já gravadas.
+- **Gráfico de temperatura** desenhado num `FrameworkElement`, sem dependência nova, com eixo fixo
+  em 20–110 °C, quebra de linha quando falta leitura e faixa de alerta atrás dos dados.
+- **Stress sem limite automático.** Botão Parar sempre disponível. O limiar (padrão 95 °C,
+  configurável em Configurações) só destaca; não encerra.
+- **Tela de Stress** como 11ª página, com leituras ao vivo de CPU, GPU e carga.
+
+### Achado durante a verificação
+
+O coletor abria a sessão com `IsGpuEnabled = false`, herança de quando a GPU era tratada só pela
+prova de vídeo. A tela de stress mostrava "sem leitura" para a GPU **enquanto o sensor respondia
+48 °C**. Nenhum dos 160 testes pegou isso, porque testavam o classificador isolado, que funcionava.
+Corrigido, e um teste passou a ler o fonte para travar a configuração — abrir a sessão real exigiria
+driver e elevação, o que não roda em teste automatizado.
+
+O teste novo foi verificado por sabotagem: com `IsGpuEnabled = false` ele falha com a mensagem
+"o gráfico de stress promete temperatura da GPU"; com `true` ele passa.
+
+### Verificação
+
+```text
+PS> dotnet build FlavosDiag.sln -warnaserror
+    0 Aviso(s)
+    0 Erro(s)
+
+PS> dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 162 | Aprovados: 162 | Falhas: 0 | Ignorados: 0
+
+PS> (executável publicado dist\FlavosDiag-0.5.0-win-x64\FlavosDiag.App.exe, 12 páginas por UI Automation)
+  ok Resumo / Sistema / Disco / Memória / CPU / Stress / GPU / Bateria / Rede / Checklist / Laudo / Configurações
+  paginas abertas: 12
+
+PS> (stress real parado pelo utilizador, no executável publicado)
+  leituras durante o teste: [48,0 °C]  [98 %]
+  botao Parar presente durante o teste: True
+  Stress encerrado após 5,2 s com 4.328 ciclos e 0 erro(s) de cálculo.
+  PACOTE VIVO AO FINAL
+
+PS> .\build\cleanroom.ps1          -> CLEAN ROOM: nenhum achado.
+PS> tools\ChecagemEncoding         -> Arquivos com problema: 0
+```
+
+### Limitação conhecida, medida nesta máquina
+
+O sensor `Core (Tctl/Tdie)` do Ryzen 5 8500G devolve **0** com `Min = 0` e `Max = 0`, mesmo sob
+carga e fora de elevação. Zero e 255 são sentinelas, não temperaturas. A tela mostra a causa por
+extenso em vez de desenhar 0 °C, e a linha da CPU fica ausente enquanto a da GPU desenha normalmente.
+Sem elevação, a temperatura da CPU pode permanecer Inconclusivo — o que é o comportamento correto,
+não uma falha do teste.
+
+### Testes que falharam durante a escrita — e por quê
+
+- `Assert.Equal` de três argumentos não existe no runner próprio; virou `Assert.True` com mensagem.
+- A asserção de escala dizia que `Pontos(OperacoesPorPonto)` valeria 1000. Vale 1. O código estava
+  certo e o teste errado; o teste foi corrigido, não a produção.
+- O teste da faixa de alerta contava a cor pura, mas a faixa é translúcida (14% sobre o fundo). Passou
+  a medir o quanto a região ficou avermelhada.
+- O guarda de clean room acusou `CpuZeroViraAusencia` por conter a substring `CpuZ`. Os métodos foram
+  renomeados em vez de enfraquecer o guarda.

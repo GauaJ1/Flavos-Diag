@@ -78,7 +78,7 @@ public static class InterfaceTests
         var (vm, servicos) = Criar();
         using var _ = servicos;
 
-        Iguais(10, vm.ItensNav.Count, "o menu deve ter um item para cada categoria");
+        Iguais(vm.Paginas.Count, vm.ItensNav.Count, "o menu deve ter um item para cada página");
 
         // Cada item aponta para uma página distinta das demais.
         var paginas = vm.ItensNav.Select(i => i.Pagina).ToList();

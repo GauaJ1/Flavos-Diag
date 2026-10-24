@@ -35,6 +35,7 @@ public sealed partial class MainViewModel : ObservableObject
         DiscoVm = new DiscoViewModel(this);
         MemoriaVm = new MemoriaViewModel(this);
         CpuVm = new CpuViewModel(this);
+        StressVm = new StressViewModel(this);
         GpuVm = new GpuViewModel(this);
         BateriaVm = new BateriaViewModel(this);
         RedeVm = new RedeViewModel(this);
@@ -44,7 +45,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         Paginas = new ObservableCollection<PaginaBase>
         {
-            Resumo, SistemaVm, DiscoVm, MemoriaVm, CpuVm, GpuVm, BateriaVm, RedeVm, ChecklistVm, LaudoVm,
+            Resumo, SistemaVm, DiscoVm, MemoriaVm, CpuVm, StressVm, GpuVm, BateriaVm, RedeVm, ChecklistVm, LaudoVm,
         };
         _paginaAtual = Resumo;
         CriarMenu();
@@ -78,6 +79,8 @@ public sealed partial class MainViewModel : ObservableObject
     public MemoriaViewModel MemoriaVm { get; }
 
     public CpuViewModel CpuVm { get; }
+
+    public StressViewModel StressVm { get; }
 
     public GpuViewModel GpuVm { get; }
 

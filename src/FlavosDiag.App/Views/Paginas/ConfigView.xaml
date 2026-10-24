@@ -39,6 +39,19 @@
 
             <Border Style="{StaticResource Cartao}" Margin="0,0,0,14">
                 <StackPanel>
+                    <TextBlock Text="Stress e temperatura" Style="{StaticResource TituloSecao}" FontSize="15" Margin="0,0,0,10" />
+
+                    <TextBlock Text="Temperatura de alerta no gráfico (°C)" Style="{StaticResource RotuloCampo}" Margin="0,0,0,4" />
+                    <TextBox Style="{StaticResource CaixaTexto}" Text="{Binding LimiarAlertaTexto, UpdateSourceTrigger=PropertyChanged}"
+                             MaxWidth="160" HorizontalAlignment="Left" Margin="0,0,0,6"
+                             AutomationProperties.Name="Limiar de alerta de temperatura" />
+                    <TextBlock Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
+                               Text="O gráfico destaca esta faixa. O teste não é encerrado sozinho: quem decide parar é você." />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Cartao}" Margin="0,0,0,14">
+                <StackPanel>
                     <TextBlock Text="Laudo" Style="{StaticResource TituloSecao}" FontSize="15" Margin="0,0,0,10" />
 
                     <CheckBox Content="Mascarar números de série no laudo (recomendado)"

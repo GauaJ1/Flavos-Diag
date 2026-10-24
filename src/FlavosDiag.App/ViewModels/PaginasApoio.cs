@@ -168,6 +168,17 @@ public sealed partial class ConfigViewModel : PaginaBase
     [ObservableProperty]
     private bool _temperaturaCpuValida = true;
 
+    /// <summary>
+    /// Temperatura a partir da qual o gráfico de stress destaca a faixa de alerta. Não encerra o
+    /// teste: quem decide parar é o técnico. Editada como texto para dar mensagem de erro clara
+    /// em vez de aceitar silenciosamente um valor absurdo.
+    /// </summary>
+    [ObservableProperty]
+    private string _limiarAlertaTexto = "95";
+
+    [ObservableProperty]
+    private bool _limiarAlertaValido = true;
+
     protected override Task CarregarAsync()
     {
         var configuracao = Principal.Configuracao;
@@ -180,6 +191,7 @@ public sealed partial class ConfigViewModel : PaginaBase
         NomeDnsTeste = configuracao.NomeDnsTeste;
         MascararSeriais = configuracao.MascararSeriais;
         PastaExportacao = configuracao.PastaExportacao;
+        LimiarAlertaTexto = configuracao.LimiarAlertaTemperaturaCelsius.ToString("0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
         return Task.CompletedTask;
     }
 
@@ -197,9 +209,51 @@ public sealed partial class ConfigViewModel : PaginaBase
         configuracao.MascararSeriais = MascararSeriais;
         configuracao.PastaExportacao = PastaExportacao.Trim();
 
+        if (!ValidarLimiarAlerta(out var limiar, out var erroLimiar))
+        {
+            Erro = erroLimiar;
+            Status = null;
+            return;
+        }
+
+        configuracao.LimiarAlertaTemperaturaCelsius = limiar;
+
         var aviso = Services.ConfiguracaoStore.Salvar(configuracao);
         Status = aviso ?? "Configurações salvas.";
         Erro = aviso;
+    }
+
+    /// <summary>
+    /// O limiar precisa estar dentro da faixa de temperatura utilizável (1–120 °C). Fora disso o
+    /// destaque nunca apareceria ou apareceria sempre, e o técnico pensaria que o gráfico falhou.
+    /// </summary>
+    private bool ValidarLimiarAlerta(out double limiar, out string? erro)
+    {
+        erro = null;
+        limiar = 95;
+
+        var texto = LimiarAlertaTexto?.Trim().Replace('.', ',');
+        if (!double.TryParse(
+                texto,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.GetCultureInfo("pt-BR"),
+                out var valor))
+        {
+            LimiarAlertaValido = false;
+            erro = "O limiar de alerta precisa ser um número (ex.: 95).";
+            return false;
+        }
+
+        if (valor < 1 || valor > 120)
+        {
+            LimiarAlertaValido = false;
+            erro = "O limiar de alerta precisa estar entre 1 e 120 °C.";
+            return false;
+        }
+
+        LimiarAlertaValido = true;
+        limiar = valor;
+        return true;
     }
 
     [RelayCommand]

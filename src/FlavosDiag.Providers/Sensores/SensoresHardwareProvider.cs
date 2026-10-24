@@ -69,7 +69,7 @@ public sealed class SensoresHardwareProvider : ISensorProvider
                         IsMotherboardEnabled = true,
                         IsMemoryEnabled = true,
                         IsStorageEnabled = true,
-                        IsGpuEnabled = false, // a GPU é tratada pela prova de vídeo da Fase 4
+                        IsGpuEnabled = true, // temperatura da GPU para o gráfico de stress
                         IsControllerEnabled = false,
                         IsNetworkEnabled = false,
                         IsPsuEnabled = false,

@@ -19,6 +19,9 @@
         <DataTemplate DataType="{x:Type vm:CpuViewModel}">
             <vistas:CpuView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:StressViewModel}">
+            <vistas:StressView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:GpuViewModel}">
             <vistas:GpuView />
         </DataTemplate>
