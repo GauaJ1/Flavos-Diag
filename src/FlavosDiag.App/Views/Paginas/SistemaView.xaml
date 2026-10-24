@@ -65,15 +65,15 @@
                                             <StackPanel>
                                                 <TextBlock Text="{Binding Local.Valor}" FontWeight="SemiBold" FontSize="12" />
                                                 <TextBlock Style="{StaticResource TextoSuave}">
-                                                    <Run Text="{Binding CapacidadeBytes.Valor, Converter={StaticResource Bytes}}" />
+                                                    <Run Text="{Binding CapacidadeBytes.Valor, Mode=OneWay, Converter={StaticResource Bytes}}" />
                                                     <Run Text=" · " />
-                                                    <Run Text="{Binding Tipo.Valor}" />
+                                                    <Run Text="{Binding Tipo.Valor, Mode=OneWay}" />
                                                     <Run Text=" · " />
-                                                    <Run Text="{Binding VelocidadeConfiguradaMhz.Valor}" />
+                                                    <Run Text="{Binding VelocidadeConfiguradaMhz.Valor, Mode=OneWay}" />
                                                     <Run Text=" MHz · " />
-                                                    <Run Text="{Binding Fabricante.Valor}" />
+                                                    <Run Text="{Binding Fabricante.Valor, Mode=OneWay}" />
                                                     <Run Text=" · " />
-                                                    <Run Text="{Binding NumeroPeca.Valor}" />
+                                                    <Run Text="{Binding NumeroPeca.Valor, Mode=OneWay}" />
                                                 </TextBlock>
                                             </StackPanel>
                                         </Border>
@@ -120,9 +120,9 @@
                                     <StackPanel>
                                         <TextBlock Text="{Binding Nome}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" />
                                         <TextBlock Style="{StaticResource TextoSuave}">
-                                            <Run Text="{Binding CodigoErro, StringFormat=Código {0}}" FontWeight="SemiBold" Foreground="{DynamicResource FlavosAtencao}" />
+                                            <Run Text="{Binding CodigoErro, Mode=OneWay, StringFormat=Código {0}}" FontWeight="SemiBold" Foreground="{DynamicResource FlavosAtencao}" />
                                             <Run Text=" — " />
-                                            <Run Text="{Binding Descricao}" />
+                                            <Run Text="{Binding Descricao, Mode=OneWay}" />
                                         </TextBlock>
                                         <TextBlock Text="Recomendação: atualizar o driver pela página oficial do fabricante do equipamento ou testar outra porta/slot. O Flavos Diag não instala drivers."
                                                    Style="{StaticResource TextoSuave}" FontSize="11" Margin="0,4,0,0" />

@@ -37,6 +37,8 @@ public static class InterfaceTests
         ("Interface: trocar de tema não deixa estilo de tema no dicionário escuro", TemaEscuroSoTemCores),
         ("Interface: todo item do menu tem ícone (não fica sem desenho)", TodoItemTemIcone),
         ("Interface: nenhuma cor fixa nas telas (tudo passa pelo tema)", NenhumaCorFixa),
+        ("Interface: <Run> não faz binding TwoWay em propriedade somente leitura", RunSemBindingTwoWay),
+        ("Interface: todas as páginas renderizam sem exceção de binding", TodasAsPaginasRenderizam),
         ("Interface: cancelar o diagnóstico interrompe e não vira Falha", CancelarDiagnostico),
     };
 
@@ -542,6 +544,194 @@ public static class InterfaceTests
             "cores fixas encontradas nas View (devem usar DynamicResource do tema): " + string.Join("; ", achados));
 
         return Task.CompletedTask;
+    }
+    /// <summary>
+    /// <c>Run.Text</c> tem <c>Mode=TwoWay</c> por padrão. Vincular um <c>Run</c> a uma propriedade
+    /// somente leitura (<c>Leitura&lt;T&gt;.Valor</c>, membros de <c>record</c>) derruba o aplicativo com
+    /// <c>XamlParseException</c> no momento em que a página é desenhada — e só nesse momento, por isso
+    /// escapa de testes que apenas montam ViewModels. Foi exatamente o defeito que derrubou o pacote
+    /// publicado ao abrir a página Sistema.
+    /// </summary>
+    private static Task RunSemBindingTwoWay()
+    {
+        var raiz = PastaDasViews();
+        var padrao = new System.Text.RegularExpressions.Regex(
+            @"<Run\b[^>]*?Text=""\{Binding\s+(?<corpo>[^}]*)\}""");
+
+        var achados = new List<string>();
+        foreach (var arquivo in Directory.EnumerateFiles(raiz, "*.xaml", SearchOption.AllDirectories))
+        {
+            var linhas = File.ReadAllLines(arquivo);
+            for (var n = 0; n < linhas.Length; n++)
+            {
+                foreach (System.Text.RegularExpressions.Match m in padrao.Matches(linhas[n]))
+                {
+                    var corpo = m.Groups["corpo"].Value;
+                    if (!corpo.Contains("Mode=OneWay", StringComparison.OrdinalIgnoreCase))
+                    {
+                        achados.Add($"{Path.GetFileName(arquivo)}:{n + 1}: {corpo.Trim()}");
+                    }
+                }
+            }
+        }
+
+        Verificar(
+            achados.Count == 0,
+            "todo <Run> precisa de Mode=OneWay (Run.Text é TwoWay por padrão e quebra em propriedade somente leitura): "
+            + string.Join("; ", achados));
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Desenha cada página de verdade, numa janela real, e reprova se qualquer exceção for lançada.
+    /// É o teste que faltava: todo o resto trabalhava com ViewModels e nunca montava o XAML, por isso um
+    /// binding inválido só apareceu ao abrir o pacote publicado.
+    /// </summary>
+    private static Task TodasAsPaginasRenderizam()
+    {
+        EmThreadSta(() =>
+        {
+            var (vm, servicos) = Criar();
+            using var _ = servicos;
+
+            // Mesma composição de recursos do App.xaml: WPF-UI, tema, ícones e conversores.
+            // (Carregar o App.xaml diretamente não serve: ele tenta construir a classe Application,
+            // e só pode existir uma por processo — a do teste.)
+            foreach (var origem in new[]
+                     {
+                         "/Wpf.Ui;component/Resources/Wpf.Ui.xaml",
+                         "/FlavosDiag.App;component/Theme/Tema.xaml",
+                         "/FlavosDiag.App;component/Converters/Icone.xaml",
+                     })
+            {
+                Application.Current!.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,," + origem, UriKind.Absolute),
+                });
+            }
+
+            var conversores = new FlavosDiag.App.Converters.VereditoParaPincel();
+            Application.Current!.Resources["VereditoPincel"] = conversores;
+            Application.Current.Resources["VereditoFundo"] = new FlavosDiag.App.Converters.VereditoParaPincel { Fundo = true };
+            Application.Current.Resources["VereditoTexto"] = new FlavosDiag.App.Converters.VereditoParaTexto();
+            Application.Current.Resources["BoolVisivel"] = new FlavosDiag.App.Converters.BoolParaVisibilidade();
+            Application.Current.Resources["TextoVisivel"] = new FlavosDiag.App.Converters.TextoParaVisibilidade();
+            Application.Current.Resources["ColecaoVazia"] = new FlavosDiag.App.Converters.ColecaoVaziaParaVisibilidade();
+            Application.Current.Resources["Bytes"] = new FlavosDiag.App.Converters.BytesParaTexto();
+            Application.Current.Resources["FundoDestaqueMenu"] = new FlavosDiag.App.Converters.SelecaoParaFundo();
+
+            var falhas = new List<string>();
+            var errosBinding = new List<string>();
+            var janela = new Window { Width = 1024, Height = 700, DataContext = vm };
+            var rastreio = new ListaRastreio(errosBinding);
+            try
+            {
+                // Preenche os dados de sessão com a fixture: sem isso os DataTemplate de listas
+                // (módulos de memória, discos, redes) nunca são instanciados e um binding inválido
+                // dentro deles passaria despercebido — foi assim que o defeito do <Run> escapou.
+                vm.Inventario = FlavosDiag.Providers.Fakes.Fixtures.Inventario();
+                vm.Discos = FlavosDiag.Providers.Fakes.Fixtures.Discos();
+                vm.Bateria = FlavosDiag.Providers.Fakes.Fixtures.Bateria();
+                vm.Rede = FlavosDiag.Providers.Fakes.Fixtures.Rede();
+
+                // As listas das páginas só são preenchidas no carregamento assíncrono, que não corre
+                // aqui. Preencher as coleções observáveis diretamente garante que os DataTemplate das
+                // listas sejam materializados — é dentro deles que os bindings inválidos se escondem.
+                foreach (var modulo in vm.Inventario.Memoria.Modulos)
+                {
+                    vm.SistemaVm.Modulos.Add(modulo);
+                }
+
+                vm.SistemaVm.CamposMemoria.Add(new FlavosDiag.App.ViewModels.LinhaCampo("Total", "32 GB"));
+
+                janela.Content = new FlavosDiag.App.Views.ConteudoPagina();
+                janela.Show();
+                Desenhar(janela);
+
+                System.Diagnostics.PresentationTraceSources.DataBindingSource.Switch.Level =
+                    System.Diagnostics.SourceLevels.Error;
+                System.Diagnostics.PresentationTraceSources.DataBindingSource.Listeners.Add(rastreio);
+
+                foreach (var pagina in vm.Paginas.Append(vm.ConfigVm))
+                {
+                    try
+                    {
+                        vm.NavegarPara(pagina);
+                        Desenhar(janela);
+                        Desenhar(janela);
+                    }
+                    catch (Exception ex)
+                    {
+                        var real = ex is System.Windows.Markup.XamlParseException { InnerException: { } interna }
+                            ? interna
+                            : ex;
+                        falhas.Add($"{pagina.Titulo}: {real.GetType().Name}: {real.Message}");
+                    }
+                }
+            }
+            finally
+            {
+                janela.Close();
+            }
+
+            System.Diagnostics.PresentationTraceSources.DataBindingSource.Listeners.Remove(rastreio);
+            Verificar(
+                falhas.Count == 0,
+                "páginas que falharam ao desenhar: " + string.Join(" | ", falhas));
+            Verificar(
+                errosBinding.Count == 0,
+                "erros de binding durante o desenho: " + string.Join(" | ", errosBinding.Distinct().Take(5)));
+        });
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Coleta os erros de binding que o WPF registra em vez de lançar.</summary>
+    private sealed class ListaRastreio : System.Diagnostics.TraceListener
+    {
+        private readonly List<string> _destino;
+
+        public ListaRastreio(List<string> destino) => _destino = destino;
+
+        public override void Write(string? message)
+        {
+        }
+
+        public override void WriteLine(string? message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _destino.Add(message);
+            }
+        }
+    }
+
+    /// <summary>Força o ciclo de layout e de renderização, que é quando os bindings são avaliados.</summary>
+    private static void Desenhar(Window janela)
+    {
+        janela.UpdateLayout();
+        var fila = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        fila.Invoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => { }));
+        janela.UpdateLayout();
+    }
+
+    /// <summary>Pasta src/FlavosDiag.App localizada a partir da pasta de saída do teste.</summary>
+    private static string PastaDasViews()
+    {
+        var raiz = AppContext.BaseDirectory;
+        for (var i = 0; i < 6 && !string.IsNullOrEmpty(raiz); i++)
+        {
+            var candidato = Path.Combine(raiz, "src", "FlavosDiag.App");
+            if (Directory.Exists(candidato))
+            {
+                return candidato;
+            }
+
+            raiz = Path.GetDirectoryName(raiz.TrimEnd(Path.DirectorySeparatorChar))!;
+        }
+
+        throw new InvalidOperationException("não foi possível localizar src/FlavosDiag.App a partir do teste");
     }
     private static string CorDe(string chave)
     {

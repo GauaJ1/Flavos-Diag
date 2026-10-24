@@ -762,3 +762,72 @@ A automação de interface usa **UI Automation**, que aciona o controle como um 
 acessibilidade — não é um clique de mouse em coordenada de tela. Confirma que o botão existe, está visível,
 habilitado e ligado ao comando certo; **não** confirma aparência, cores percebidas nem contraste visual.
 A conferência visual dos dois temas e das resoluções/escalas continua no roteiro manual, seção 4A.
+
+---
+
+## Pacote para teste manual e o defeito que ele revelou
+
+O pacote portátil foi gerado a partir do estado atual e **conferido executando o próprio executável
+publicado** — não o build de depuração.
+
+```
+pasta:    dist\FlavosDiag-0.5.0-win-x64
+arquivos: 306
+tamanho:  174 MB
+licenças: 11 arquivos em licenses/
+```
+
+### Defeito encontrado: o pacote fechava ao abrir a página Sistema
+
+Na primeira execução do pacote publicado, o aplicativo **encerrou** ao abrir Sistema:
+
+```
+Unhandled exception. System.Windows.Markup.XamlParseException: Uma associação TwoWay ou
+OneWayToSource não pode funcionar na propriedade somente leitura 'Valor' do tipo
+'FlavosDiag.Core.Leitura`1[System.Int64]'.
+```
+
+**Causa:** `Run.Text` é `TwoWay` por padrão. Sete `<Run>` da página Sistema estavam vinculados a
+`Leitura<T>.Valor`, que é somente leitura, dentro de um `DataTemplate` dos módulos de memória. O WPF só
+quebra ao **materializar o template**, ou seja, quando há módulos para listar.
+
+**Por que nenhum teste pegou:** os 136 testes construíam ViewModels e nunca desenhavam o XAML. O defeito
+existia desde a Fase 5; se o pacote não tivesse sido executado, seria entregue assim.
+
+**Correção:** os sete `<Run>` receberam `Mode=OneWay`.
+
+### Proteção contra a reincidência
+
+Dois testes novos:
+
+1. **`<Run> não faz binding TwoWay em propriedade somente leitura`** — varre os `.xaml` e reprova `<Run>`
+   sem `Mode=OneWay`. Comprovado por sabotagem: reintroduzindo o defeito, falha apontando
+   `SistemaView.xaml:70: Tipo.Valor`.
+2. **`todas as páginas renderizam sem exceção de binding`** — monta uma janela real, navega pelas 11
+   páginas, preenche as listas (módulos, discos, bateria, rede) para materializar os `DataTemplate` e
+   reprova qualquer exceção ou erro de binding.
+
+**Limite honesto do teste 2:** ele **não** reproduz o crash original. Verificado por sabotagem: com o
+defeito de volta e 2 módulos desenhados, ele continua passando — o WPF reporta esse tipo de erro num
+retorno de renderização assíncrono, fora do ciclo de layout que o teste controla. Quem realmente protege é
+o teste 1, uma verificação estática. O teste 2 cobre a classe geral de erros (recursos ausentes,
+conversores, binding quebrado) e foi ele que denunciou a falta dos conversores quando a janela foi montada
+pela primeira vez; mas **não** deve ser descrito como prova de que a página Sistema abre.
+
+### Evidência final
+
+```
+PS> dotnet build FlavosDiag.sln -warnaserror --nologo -v q
+    0 Aviso(s)
+    0 Erro(s)
+
+PS> dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 136 | Aprovados: 136 | Falhas: 0 | Ignorados: 0
+
+PS> (executável publicado, 11 páginas abertas por UI Automation)
+PACOTE ABRIU
+PAGINAS ABERTAS SEM CRASH: 11 de 11
+
+PS> .\build\cleanroom.ps1          -> CLEAN ROOM: nenhum achado.
+PS> tools\ChecagemEncoding         -> Arquivos com problema: 0
+```
