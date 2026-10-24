@@ -13,5 +13,9 @@
     <Copyright>Copyright (c) Flavos</Copyright>
     <NeutralLanguage>pt-BR</NeutralLanguage>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
+    <!-- Cadeia de suprimentos: versões travadas em packages.lock.json e auditoria do NuGet ligada. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 </Project>

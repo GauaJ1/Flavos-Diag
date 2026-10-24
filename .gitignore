@@ -10,3 +10,5 @@ tests/**/TestResults/
 # Ferramentas internas de manutencao: compilam como projeto, nao fazem parte do produto
 tools/**/bin/
 tools/**/obj/
+# Cadeia de suprimentos: os arquivos de trava de pacotes DEVEM ser versionados
+!packages.lock.json
