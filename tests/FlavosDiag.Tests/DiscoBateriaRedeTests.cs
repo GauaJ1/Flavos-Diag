@@ -111,7 +111,9 @@ public static class DiscoBateriaRedeTests
             Nvme = new SaudeNvme
             {
                 AvisoCritico = Leitura<int>.Ok(log.AvisoCritico, "NVMe"),
-                TemperaturaCelsius = Leitura<int>.Ok(log.TemperaturaCelsius, "NVMe"),
+                TemperaturaCelsius = log.TemperaturaCelsius is { } temperaturaNvme
+                    ? Leitura<int>.Ok(temperaturaNvme, "NVMe")
+                    : Leitura<int>.NaoSuportado("o disco não informou uma temperatura válida", "NVMe"),
                 EspacoDisponivelPercentual = Leitura<int>.Ok(log.EspacoDisponivelPercentual, "NVMe"),
                 LimiarEspacoDisponivel = Leitura<int>.Ok(log.LimiarEspacoPercentual, "NVMe"),
                 PercentualVidaUsada = Leitura<double>.Ok(log.PercentualVidaUsada, "NVMe"),

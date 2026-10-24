@@ -16,17 +16,19 @@
                             Inventário, saúde dos discos, bateria, sensores por 60 segundos e rede básica.
                             Sem teste de esforço. Leva de 2 a 4 minutos.
                         </TextBlock>
-                        <TextBlock Text="{Binding EtapaAtual}" Margin="0,10,0,0" FontWeight="SemiBold" Foreground="{StaticResource FlavosPetroleo}"
+                        <TextBlock Text="{Binding EtapaAtual}" Margin="0,10,0,0" FontWeight="SemiBold" Foreground="{DynamicResource FlavosPetroleo}"
                                    Visibility="{Binding EtapaAtual, Converter={StaticResource TextoVisivel}}" />
                         <ProgressBar Height="4" Margin="0,10,0,0" Maximum="1" Value="{Binding Progresso, Mode=OneWay}"
-                                     Foreground="{StaticResource FlavosPetroleo}" Background="{DynamicResource FlavosBorda}"
+                                     Foreground="{DynamicResource FlavosPetroleo}" Background="{DynamicResource FlavosBorda}"
                                      Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}}"
                                      AutomationProperties.Name="Progresso do diagnóstico" />
                         <TextBlock Text="{Binding DuracaoTexto}" Style="{StaticResource TextoSuave}" Margin="0,8,0,0" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Top" Orientation="Horizontal">
                         <Button Style="{StaticResource BotaoSecundario}" Content="Cancelar" Margin="0,0,8,0" MinHeight="48"
-                                Command="{Binding DiagnosticoRapidoCommand}" Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}}" />
+                                Command="{Binding DiagnosticoRapidoCancelCommand}" Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}}"
+                                AutomationProperties.Name="Cancelar diagnóstico"
+                                ToolTip="Interromper o diagnóstico em andamento" />
                         <Button Style="{StaticResource BotaoPrimario}" MinWidth="210" MinHeight="48" FontSize="15"
                                 Command="{Binding DiagnosticoRapidoCommand}"
                                 Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}, ConverterParameter=inverter}"

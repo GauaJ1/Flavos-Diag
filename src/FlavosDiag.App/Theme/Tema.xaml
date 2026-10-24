@@ -26,11 +26,15 @@
     <SolidColorBrush x:Key="FlavosBorda" Color="#E2E8F0" />
     <SolidColorBrush x:Key="FlavosFoco" Color="#0F766E" />
 
+    <!-- Tinta sobre o destaque (texto de botão primário, selo). No claro, branco puro;
+         no escuro o destaque fica claro e a tinta precisa escurecer (ver TemaEscuro.xaml). -->
+    <SolidColorBrush x:Key="FlavosTextoNoDestaque" Color="#FFFFFF" />
+
     <!-- ============ Botão primário ============ -->
     <Style x:Key="BotaoPrimario" TargetType="Button">
-        <Setter Property="Foreground" Value="White" />
-        <Setter Property="Background" Value="{StaticResource FlavosPetroleo}" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosPetroleo}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTextoNoDestaque}" />
+        <Setter Property="Background" Value="{DynamicResource FlavosPetroleo}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlavosPetroleo}" />
         <Setter Property="Padding" Value="18,10" />
         <Setter Property="MinHeight" Value="40" />
         <Setter Property="FontSize" Value="14" />
@@ -49,14 +53,14 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource FlavosPetroleoEscuro}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource FlavosPetroleoEscuro}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource FlavosPetroleoEscuro}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource FlavosPetroleoEscuro}" />
                             <Setter TargetName="Bd" Property="Opacity" Value="0.9" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="#0F172A" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlavosBorda}" />
                             <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -71,9 +75,9 @@
 
     <!-- ============ Botão secundário ============ -->
     <Style x:Key="BotaoSecundario" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTexto}" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlavosBorda}" />
         <Setter Property="Padding" Value="14,8" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="Cursor" Value="Hand" />
@@ -90,11 +94,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource FlavosSuperficieAlt}" />
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosPetroleo}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource FlavosSuperficieAlt}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlavosPetroleo}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosFoco}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlavosFoco}" />
                             <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -108,14 +112,14 @@
 
     <!-- ============ Botão de parada (sempre visível durante testes) ============ -->
     <Style x:Key="BotaoParada" TargetType="Button" BasedOn="{StaticResource BotaoPrimario}">
-        <Setter Property="Background" Value="{StaticResource FlavosFalha}" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosFalha}" />
+        <Setter Property="Background" Value="{DynamicResource FlavosFalha}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlavosFalha}" />
     </Style>
 
     <!-- ============ Cartão de conteúdo (com hierarquia própria: borda + título) ============ -->
     <Style x:Key="Cartao" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource FlavosSuperficie}" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
+        <Setter Property="Background" Value="{DynamicResource FlavosSuperficie}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlavosBorda}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="10" />
         <Setter Property="Padding" Value="16" />
@@ -124,25 +128,25 @@
     <Style x:Key="TituloSecao" TargetType="TextBlock">
         <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTexto}" />
         <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
 
     <Style x:Key="TituloPagina" TargetType="TextBlock">
         <Setter Property="FontSize" Value="24" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTexto}" />
     </Style>
 
     <Style x:Key="RotuloCampo" TargetType="TextBlock">
         <Setter Property="FontSize" Value="11" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTextoSuave}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTextoSuave}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <Style x:Key="ValorCampo" TargetType="TextBlock">
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTexto}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,1,0,6" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
@@ -150,7 +154,7 @@
 
     <Style x:Key="TextoSuave" TargetType="TextBlock">
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTextoSuave}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTextoSuave}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
@@ -159,16 +163,16 @@
         <Setter Property="CornerRadius" Value="6" />
         <Setter Property="Padding" Value="8,3" />
         <Setter Property="HorizontalAlignment" Value="Left" />
-        <Setter Property="Background" Value="{StaticResource FlavosInconclusivoFundo}" />
+        <Setter Property="Background" Value="{DynamicResource FlavosInconclusivoFundo}" />
     </Style>
 
     <!-- ============ TextBox de formulário ============ -->
     <Style x:Key="CaixaTexto" TargetType="TextBox">
         <Setter Property="MinHeight" Value="34" />
         <Setter Property="Padding" Value="8,6" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
-        <Setter Property="Background" Value="{StaticResource FlavosSuperficie}" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlavosBorda}" />
+        <Setter Property="Background" Value="{DynamicResource FlavosSuperficie}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlavosTexto}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
@@ -178,7 +182,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosFoco}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FlavosFoco}" />
                             <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
                         </Trigger>
                     </ControlTemplate.Triggers>

@@ -44,7 +44,7 @@ public static class RoteiroFase2
 
                 if (disco.Saude.Nvme is { } nvme)
                 {
-                    Log($"      NVMe: {nvme.TemperaturaCelsius.Valor} °C | vida usada {nvme.PercentualVidaUsada.Valor}% | escrito {nvme.DadosEscritosGb.Valor} GB | horas {nvme.HorasLigado.Valor} | erros de mídia {nvme.ErrosIntegridadeMidia.Valor}");
+                    Log($"      NVMe: {(nvme.TemperaturaCelsius.Disponivel ? nvme.TemperaturaCelsius.Valor + " °C" : "sem temperatura — " + nvme.TemperaturaCelsius.Causa)} | vida usada {nvme.PercentualVidaUsada.Valor}% | escrito {nvme.DadosEscritosGb.Valor} GB | horas {nvme.HorasLigado.Valor} | erros de mídia {nvme.ErrosIntegridadeMidia.Valor}");
                 }
 
                 if (disco.Saude.Confiabilidade is { } conf)

@@ -24,6 +24,13 @@ public static class AvaliadorSaudeDisco
 
         foreach (var atributo in saude.AtributosAta)
         {
+            // Sensor de temperatura presente no bloco, mas com valor 0/255/fora de faixa: não é medição.
+            // Fica fora dos achados e não conta como leitura — um sentinela jamais pode virar "Atenção".
+            if (atributo.LeituraIndisponivel)
+            {
+                continue;
+            }
+
             switch (atributo.Id)
             {
                 case SmartAta.IdSetoresPendentes when atributo.Bruto > 0:

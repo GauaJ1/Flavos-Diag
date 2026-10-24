@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using FlavosDiag.Core;
 using FlavosDiag.Core.Modelos;
 
 namespace FlavosDiag.Providers.Nativo;
@@ -72,6 +73,9 @@ public static class SmartAta
                 Limite = dados[baseOff + 2],
                 Bruto = bruto,
                 Interpretacao = InterpretarValor(id, bruto, valor),
+                // Atributo de temperatura presente no bloco mas sem leitura aproveitável: continua listado
+                // (o técnico vê que o sensor existe), porém marcado, para nenhum veredito usá-lo.
+                LeituraIndisponivel = EhAtributoTemperatura(id) && !TemperaturaValida(id, bruto),
             });
         }
 
@@ -102,11 +106,81 @@ public static class SmartAta
         IdSetoresPendentes => "Nenhum setor pendente.",
         IdErrosNaoCorrigiveis when bruto > 0 => $"{bruto} erro(s) não corrigível(is) registrado(s).",
         IdErrosNaoCorrigiveis => "Nenhum erro não corrigível.",
-        IdTemperatura or IdTemperaturaAlternativa => $"{bruto} °C",
+        // Temperatura: o bruto pode vir 0, 255 ou fora de faixa. Escrever "0 °C" faria o técnico acreditar
+        // numa medição, então a interpretação declara a ausência com a causa.
+        IdTemperatura or IdTemperaturaAlternativa when TemperaturaValida(id, bruto) => $"{bruto} °C",
+        IdTemperatura or IdTemperaturaAlternativa =>
+            "leitura indisponível — " + Temperatura.CausaSentinelaOuForaDaFaixa + $"; valor bruto recebido: {bruto}",
         IdHorasLigado => $"{bruto} hora(s) ligado",
         IdCiclosLigarDesligar => $"{bruto} ciclo(s)",
         _ => $"Valor normalizado {valorNormalizado}, bruto {bruto}",
     };
+
+    /// <summary>Indica se o atributo é um dos sensores de temperatura (0xC2 / 194 ou 0xBE / 190).</summary>
+    public static bool EhAtributoTemperatura(int id) => id is IdTemperatura or IdTemperaturaAlternativa;
+
+    /// <summary>
+    /// Diz se o valor bruto de um atributo de temperatura é uma leitura real (1–120 °C) pela regra única
+    /// de <see cref="Temperatura"/>. Recebe o id: atributos que não são de temperatura nunca são "válidos"
+    /// como temperatura.
+    /// </summary>
+    public static bool TemperaturaValida(int id, long bruto) =>
+        EhAtributoTemperatura(id) && Temperatura.TemperaturaValida((int)bruto);
+
+    /// <summary>
+    /// Interpretação do atributo de temperatura como <see cref="Leitura{T}"/>: valor real quando dentro da
+    /// faixa, ausência com causa em pt-BR quando o bruto é sentinela (0/255) ou fora de 1–120 °C.
+    /// </summary>
+    /// <param name="id">ID do atributo (só 0xC2/0xBE são temperaturas).</param>
+    /// <param name="bruto">Valor bruto de seis bytes lido do bloco SMART.</param>
+    public static Leitura<int> LerTemperatura(int id, long bruto)
+    {
+        if (!EhAtributoTemperatura(id))
+        {
+            return Leitura<int>.NaoSuportado("O atributo " + id + " não é uma temperatura.");
+        }
+
+        return Temperatura.InterpretarTemperatura((int)bruto, id == IdTemperatura ? "SMART ATA 0xC2" : "SMART ATA 0xBE");
+    }
+
+    /// <summary>
+    /// Temperatura do disco a partir dos atributos SMART: <c>0xC2</c> (principal) tem precedência sobre
+    /// <c>0xBE</c> (alternativo). Quando aparece um atributo de temperatura sem leitura aproveitável, a
+    /// ausência sai com a causa dele — nunca com <c>0</c>, que pareceria medição.
+    /// </summary>
+    public static Leitura<int> LerTemperatura(IReadOnlyList<AtributoSmart> atributos)
+    {
+        Leitura<int>? ausencia = null;
+        Leitura<int>? alternativa = null;
+        for (var i = 0; i < atributos.Count; i++)
+        {
+            var atributo = atributos[i];
+            if (!EhAtributoTemperatura(atributo.Id))
+            {
+                continue;
+            }
+
+            var leitura = LerTemperatura(atributo.Id, atributo.Bruto);
+            if (leitura.Disponivel)
+            {
+                // O sensor principal manda: só é substituído pelo alternativo se ele próprio faltar.
+                if (atributo.Id == IdTemperatura)
+                {
+                    return leitura;
+                }
+
+                alternativa ??= leitura;
+            }
+            else
+            {
+                // Um sensor válido sempre prevalece sobre o outro que está com valor inválido.
+                ausencia ??= leitura;
+            }
+        }
+
+        return alternativa ?? ausencia
+            ?? Leitura<int>.NaoSuportado("O disco não expõe um atributo de temperatura (0xC2/0xBE).", "SMART ATA");
+    }
 
     /// <summary>
     /// Lê o bloco SMART por IOCTL_ATA_PASS_THROUGH_DIRECT (comando ATA SMART READ DATA).

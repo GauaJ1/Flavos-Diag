@@ -56,7 +56,13 @@ public partial class App : Application
 
         if (escuro)
         {
-            dicio.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/Theme/TemaEscuro.xaml", UriKind.Absolute) });
+            // URI com o nome do assembly: a forma relativa ("Theme/TemaEscuro.xaml") só resolve
+            // quando quem carrega é o próprio assembly do aplicativo. Com o nome explícito, a troca
+            // de tema funciona também a partir de código de teste.
+            dicio.Add(new ResourceDictionary
+            {
+                Source = new Uri("pack://application:,,,/FlavosDiag.App;component/Theme/TemaEscuro.xaml", UriKind.Absolute),
+            });
         }
     }
 

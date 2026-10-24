@@ -145,7 +145,8 @@ public static class SmartNvme
 
         return new LogSaudeNvme(
             AvisoCritico: avisoCritico,
-            TemperaturaCelsius: temperaturaKelvin > 273 ? temperaturaKelvin - 273 : 0,
+            // "Sem leitura" precisa continuar sendo ausência: devolver 0 aqui viraria um "0 °C" real no laudo.
+            TemperaturaCelsius: Temperatura.DeKelvinParaCelsius(temperaturaKelvin),
             PercentualVidaUsada: percentualUsado,
             EspacoDisponivelPercentual: espacoDisponivel,
             LimiarEspacoPercentual: limiarEspaco,
@@ -160,7 +161,12 @@ public static class SmartNvme
 /// <summary>Log de saúde NVMe já interpretado (unidades convertidas).</summary>
 public sealed record LogSaudeNvme(
     int AvisoCritico,
-    int TemperaturaCelsius,
+    /// <summary>
+    /// Temperatura em °C, ou <c>null</c> quando o controlador não informou uma leitura aproveitável
+    /// (Kelvin &lt;= 273, sentinela 0xFFFF ou resultado fora de 1–120 °C). O <c>null</c> existe para que a
+    /// ausência não seja confundida com uma medição real de 0 °C.
+    /// </summary>
+    int? TemperaturaCelsius,
     int PercentualVidaUsada,
     int EspacoDisponivelPercentual,
     int LimiarEspacoPercentual,

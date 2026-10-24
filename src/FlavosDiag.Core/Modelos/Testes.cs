@@ -134,6 +134,14 @@ public sealed record ResultadoTesteMemoria
     /// <summary>Quantidade de palavras divergentes encontradas.</summary>
     public required long ErrosDetectados { get; init; }
 
+    /// <summary>
+    /// Quantos padrões distintos (execuções do teste rápido) encontraram divergência. <c>ErrosDetectados</c>
+    /// conta palavras; este campo conta execuções. Duas execuções com erro confirmam o defeito (Falha), uma
+    /// só manda repetir o teste (Atenção). Padrão 1 para não mudar o significado de quem já cria o record:
+    /// erro detectado implica pelo menos uma execução com erro.
+    /// </summary>
+    public int ExecucoesComErro { get; init; } = 1;
+
     public required TimeSpan Duracao { get; init; }
 
     public required bool Cancelado { get; init; }

@@ -254,6 +254,10 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
         long palavrasDivergentes = 0;
         long primeiroDeslocamento = -1;
         var padroesConcluidos = new List<string>();
+
+        // Cada padrão é uma execução independente: quantos deles encontraram divergência é a contagem
+        // que separa "repetir o teste" (uma execução) de "confirmação" (duas ou mais).
+        var execucoesComErro = 0;
         var cancelado = false;
         var falhouAlocacao = false;
 
@@ -279,6 +283,7 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
             {
                 var padrao = Padroes[p];
                 var concluiuPadrao = true;
+                var padraoTeveDivergencia = false;
 
                 // Preenche e confere bloco a bloco: o cancelamento responde em menos de 1 s.
                 for (var inicio = 0; inicio < buffer.Length; inicio += TamanhoBlocoBytes)
@@ -315,6 +320,7 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
                     {
                         var deslocamento = LocalizarDivergencia(padrao.Nome, buffer, inicio, bloco);
                         palavrasDivergentes++;
+                        padraoTeveDivergencia = true;
                         if (primeiroDeslocamento < 0)
                         {
                             primeiroDeslocamento = deslocamento;
@@ -325,6 +331,11 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
                 if (!concluiuPadrao)
                 {
                     break;
+                }
+
+                if (padraoTeveDivergencia)
+                {
+                    execucoesComErro++;
                 }
 
                 padroesConcluidos.Add(padrao.Nome);
@@ -366,13 +377,13 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
             status = StatusTesteMemoria.SemErro;
             leitura = Leitura<Veredito>.Ok(Veredito.Inconclusivo, "teste rápido sem divergência não comprova integridade");
         }
-        else if (palavrasDivergentes >= 2 && padroesConcluidos.Count >= 2)
+        else if (execucoesComErro >= 2)
         {
             avisos.Add(
-                $"{palavrasDivergentes} divergência(s) em padrões distintos. Duas execuções seguidas com erro indicam " +
-                "defeito na memória: troque o módulo e teste novamente.");
+                $"{palavrasDivergentes} divergência(s) em {execucoesComErro} padrões distintos. Dois ou mais padrões " +
+                "com erro confirmam defeito na memória: troque o módulo e teste novamente.");
             status = StatusTesteMemoria.Erro;
-            leitura = Leitura<Veredito>.Ok(Veredito.Falha, $"{palavrasDivergentes} divergência(s) em execuções seguidas");
+            leitura = Leitura<Veredito>.Ok(Veredito.Falha, $"{execucoesComErro} execuções com erro");
         }
         else
         {
@@ -389,6 +400,7 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
             BytesTestados = bytesTestados,
             Padroes = padroesConcluidos,
             ErrosDetectados = palavrasDivergentes,
+            ExecucoesComErro = execucoesComErro,
             Duracao = relogio.Elapsed,
             Cancelado = cancelado,
             AvisoTexto = string.Join(" ", avisos),
@@ -412,6 +424,7 @@ public sealed class TesteMemoriaRunner : ITesteMemoriaProvider
             BytesTestados = 0,
             Padroes = Array.Empty<string>(),
             ErrosDetectados = 0,
+            ExecucoesComErro = 0,
             Duracao = duracao,
             Cancelado = false,
             AvisoTexto = string.Join(" ", avisos),

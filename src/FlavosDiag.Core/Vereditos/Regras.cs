@@ -81,60 +81,214 @@ public static class Regras
     }
 
     // ---------------- Memória ----------------
+    /// <summary>
+    /// Veredito da memória. Precedência: nenhum teste executado &gt; teste com duas ou mais execuções com erro
+    /// (ou duas ou mais divergências) &gt; teste com uma divergência &gt; teste rápido sem divergência &gt;
+    /// memória total abaixo de 4 GiB. Inventário não é teste: sem teste o veredito é sempre Inconclusivo,
+    /// e um teste rápido sem divergência também não vira OK.
+    /// </summary>
     public static RespostaRegra Memoria(InfoMemoria mem, ResultadoTesteMemoria? teste = null)
     {
-        if (teste is { ErrosDetectados: > 0 })
-        {
-            return new RespostaRegra
-            {
-                Veredito = Veredito.Falha,
-                Resumo = $"Teste rápido de padrões encontrou {teste.ErrosDetectados} divergência(s) na memória.",
-                Evidencias = new[] { new Evidencia { Titulo = "Erros de padrão", Valor = teste.ErrosDetectados.ToString() } },
-                Recomendacoes = new[]
-                {
-                    new Recomendacao
-                    {
-                        Acao = "Executar o diagnóstico de memória nativo completo (reinicia o computador) e testar os módulos individualmente.",
-                        Prioridade = PrioridadeRecomendacao.Urgente,
-                        Justificativa = "Divergência de padrão indica memória instável.",
-                    },
-                },
-            };
-        }
+        var evidencias = EvidenciasInventario(mem);
+        var limitacoes = new List<string> { LimiteTesteRapido };
 
-        if (mem.TotalBytes.Ausente)
+        // 1. Sem teste (ou teste que não chegou a executar) nada foi provado: inventário lido não é teste.
+        if (teste is null || teste.Status == StatusTesteMemoria.NaoExecutado || teste.BytesTestados <= 0)
         {
             return new RespostaRegra
             {
                 Veredito = Veredito.Inconclusivo,
-                Resumo = "Não foi possível ler os módulos de memória.",
-                Limitacoes = new[] { mem.TotalBytes.Causa ?? "WMI não retornou módulos" },
+                Resumo = mem.TotalBytes.Ausente
+                    ? "Não foi possível ler os módulos de memória e nenhum teste de memória foi registrado."
+                    : "Inventário de memória lido, mas nenhum teste de memória foi registrado: nada foi gravado e relido " +
+                      "para provar que os módulos retêm o conteúdo.",
+                Evidencias = evidencias,
+                Recomendacoes = new[]
+                {
+                    new Recomendacao
+                    {
+                        Acao = "Executar o teste de memória do Flavos Diag (grava padrões e relê) e, se possível, o diagnóstico de memória completo no boot do Windows.",
+                        Prioridade = PrioridadeRecomendacao.Recomendada,
+                        Justificativa = "Ler o inventário mostra só a quantidade de memória; só um teste de gravação e leitura verifica se os módulos retêm dados.",
+                    },
+                },
+                Limitacoes = mem.TotalBytes.Ausente
+                    ? limitacoes.Append(mem.TotalBytes.Causa ?? "WMI não retornou módulos").ToList()
+                    : limitacoes,
             };
         }
 
-        var total = mem.TotalBytes.Valor;
-        var atencao = total < 4L * 1024 * 1024 * 1024;
-        var evidencias = new List<Evidencia>
-        {
-            new() { Titulo = "Memória total", Valor = FormatacaoBr.Gib(total / 1024.0 / 1024 / 1024), Fonte = "Win32_PhysicalMemory" },
-        };
+        evidencias.AddRange(EvidenciasTeste(teste));
 
-        if (mem.Modulos.Any(m => m.CapacidadeBytes.Ausente || m.CapacidadeBytes.Valor <= 0))
+        // 4. Duas ou mais execuções com erro (ou duas ou mais divergências) confirmam o defeito.
+        if (teste.ExecucoesComErro >= 2 || teste.ErrosDetectados >= 2)
         {
-            atencao = true;
-            evidencias.Add(new Evidencia { Titulo = "Módulo ilegível", Valor = "Um ou mais módulos sem capacidade válida" });
+            var execucoes = Math.Max(teste.ExecucoesComErro, 1);
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Falha,
+                Resumo = $"O teste de memória encontrou divergência em {execucoes} execuções: o que foi gravado não voltou " +
+                         "igual em mais de um momento do teste, então a memória não está retendo os dados com confiabilidade.",
+                Evidencias = evidencias,
+                Recomendacoes = new[]
+                {
+                    new Recomendacao
+                    {
+                        Acao = "Testar os módulos de memória individualmente e substituir o que apresentar divergência; antes da troca, fazer backup dos dados.",
+                        Prioridade = PrioridadeRecomendacao.Urgente,
+                        Justificativa = "Erros em execuções diferentes indicam defeito real do módulo, não falha isolada do teste.",
+                    },
+                },
+                Limitacoes = limitacoes,
+            };
+        }
+
+        // 3. Uma divergência: pode ser falso positivo ou defeito intermitente.
+        if (teste.ErrosDetectados == 1)
+        {
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Atencao,
+                Resumo = "O teste de memória encontrou uma única divergência. Repita o teste: um acerto isolado pode ser " +
+                         "falso positivo ou defeito intermitente, e só uma nova execução mostra se o erro se repete.",
+                Evidencias = evidencias,
+                Recomendacoes = new[]
+                {
+                    new Recomendacao
+                    {
+                        Acao = "Repetir o teste de memória. Ele voltará a divergir se o problema for real.",
+                        Prioridade = PrioridadeRecomendacao.Recomendada,
+                        Justificativa = "Com uma só divergência não é possível separar defeito real de interferência de outro programa ou de um evento isolado.",
+                    },
+                },
+                Limitacoes = limitacoes,
+            };
+        }
+
+        // 2. Teste rápido sem divergência: continua Inconclusivo, com a ressalva de tamanho se houver.
+        var total = mem.TotalBytes.Disponivel ? mem.TotalBytes.Valor : 0;
+        var abaixoDe4GiB = total > 0 && total < 4L * 1024 * 1024 * 1024;
+        var modulosIlegiveis = mem.Modulos.Any(m => m.CapacidadeBytes.Ausente || m.CapacidadeBytes.Valor <= 0);
+
+        if (abaixoDe4GiB)
+        {
+            // 5. Regra de tamanho: só vale quando um teste realmente rodou.
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Atencao,
+                Resumo = $"O teste de memória não encontrou divergências, mas a memória total de " +
+                         $"{FormatacaoBr.Gib(total / 1024.0 / 1024 / 1024)} pode limitar o uso do computador.",
+                Evidencias = evidencias,
+                Limitacoes = limitacoes,
+            };
+        }
+
+        if (modulosIlegiveis)
+        {
+            return new RespostaRegra
+            {
+                Veredito = Veredito.Atencao,
+                Resumo = "O teste de memória não encontrou divergências, mas um ou mais módulos têm capacidade ilegível: " +
+                         "o inventário não confirma a configuração instalada.",
+                Evidencias = evidencias,
+                Limitacoes = limitacoes,
+            };
         }
 
         return new RespostaRegra
         {
-            Veredito = atencao ? Veredito.Atencao : Veredito.Ok,
-            Resumo = atencao
-                ? (total < 4L * 1024 * 1024 * 1024
-                    ? "Memória abaixo de 4 GiB pode limitar o uso do computador."
-                    : "Foram encontrados módulos com leitura inconsistente.")
-                : $"Memória total de {FormatacaoBr.Gib(total / 1024.0 / 1024 / 1024)} lida com sucesso.",
+            Veredito = Veredito.Inconclusivo,
+            Resumo = "O teste rápido de memória não encontrou divergências, mas isso não prova que a memória está boa: " +
+                     "ele cobre parte da memória por pouco tempo e não substitui um teste completo.",
             Evidencias = evidencias,
+            Recomendacoes = new[]
+            {
+                new Recomendacao
+                {
+                    Acao = "Para conclusão definitiva, executar o diagnóstico de memória completo no boot do Windows.",
+                    Prioridade = PrioridadeRecomendacao.Recomendada,
+                    Justificativa = "Só o teste completo, mais longo e abrangendo toda a memória, permite afirmar que a memória está boa.",
+                },
+            },
+            Limitacoes = limitacoes,
         };
+    }
+
+    private const string LimiteTesteRapido =
+        "Teste rápido: grava padrões em parte da memória livre por pouco tempo; não cobre os módulos inteiros nem substitui o teste completo.";
+
+    /// <summary>Evidências do inventário. Só entram valores lidos: ausência não vira número.</summary>
+    private static List<Evidencia> EvidenciasInventario(InfoMemoria mem)
+    {
+        var evidencias = new List<Evidencia>();
+        if (mem.TotalBytes.Disponivel && mem.TotalBytes.Valor > 0)
+        {
+            evidencias.Add(new Evidencia
+            {
+                Titulo = "Memória total",
+                Valor = FormatacaoBr.Gib(mem.TotalBytes.Valor / 1024.0 / 1024 / 1024),
+                Fonte = "Win32_PhysicalMemory",
+            });
+        }
+        else
+        {
+            evidencias.Add(new Evidencia
+            {
+                Titulo = "Memória total",
+                Valor = FormatacaoBr.NaoDisponivel(mem.TotalBytes.Causa),
+                Fonte = "Win32_PhysicalMemory",
+            });
+        }
+
+        if (mem.SlotsTotais.Disponivel && mem.SlotsTotais.Valor > 0)
+        {
+            evidencias.Add(new Evidencia
+            {
+                Titulo = "Slots ocupados",
+                Valor = mem.SlotsUsados.Disponivel
+                    ? $"{mem.SlotsUsados.Valor} de {mem.SlotsTotais.Valor}"
+                    : FormatacaoBr.NaoDisponivel(mem.SlotsUsados.Causa),
+                Fonte = "Win32_PhysicalMemoryArray",
+            });
+        }
+
+        if (mem.Modulos.Any(m => m.CapacidadeBytes.Ausente || m.CapacidadeBytes.Valor <= 0))
+        {
+            evidencias.Add(new Evidencia { Titulo = "Módulo ilegível", Valor = "Um ou mais módulos sem capacidade válida" });
+        }
+
+        return evidencias;
+    }
+
+    /// <summary>Evidências do teste de memória executado.</summary>
+    private static List<Evidencia> EvidenciasTeste(ResultadoTesteMemoria teste)
+    {
+        var evidencias = new List<Evidencia>
+        {
+            new()
+            {
+                Titulo = "Memória verificada",
+                Valor = teste.BytesTestados > 0
+                    ? $"{FormatacaoBr.Bytes(teste.BytesTestados)} em {teste.Padroes.Count} padrão(ões)"
+                    : "Nenhum byte verificado",
+                Fonte = "TesteMemoriaRunner",
+            },
+            new() { Titulo = "Divergências", Valor = teste.ErrosDetectados.ToString(), Fonte = "TesteMemoriaRunner" },
+            new() { Titulo = "Execuções com erro", Valor = teste.ExecucoesComErro.ToString(), Fonte = "TesteMemoriaRunner" },
+            new() { Titulo = "Duração do teste", Valor = FormatacaoBr.Duracao(teste.Duracao), Fonte = "TesteMemoriaRunner" },
+        };
+
+        if (teste.PrimeiroDeslocamentoErro is { } deslocamento)
+        {
+            evidencias.Add(new Evidencia { Titulo = "Primeira divergência", Valor = "deslocamento " + deslocamento, Fonte = "TesteMemoriaRunner" });
+        }
+
+        if (teste.Cancelado)
+        {
+            evidencias.Add(new Evidencia { Titulo = "Teste interrompido", Valor = "Cancelado pelo usuário: resultado parcial" });
+        }
+
+        return evidencias;
     }
 
     // ---------------- Disco ----------------
@@ -208,10 +362,13 @@ public static class Regras
                 atencao.Add($"vida do SSD usada {vida} %");
             }
 
-            var temp = Bruto(194) & 0xFF;
-            if (temp >= 60)
+            // 0x00 e 0xFF são sentinelas ("sem leitura") e valores fora da faixa não são temperatura
+            // de trabalho: nesses casos não há o que avisar. Sem esta checagem, um sensor mudo (255)
+            // viraria "temperatura 255 °C" e o disco seria reprovado por um dado que não existe.
+            var tempBruta = (int)(Bruto(194) & 0xFF);
+            if (FaixaTemperatura.Valida(tempBruta) && tempBruta >= 60)
             {
-                atencao.Add($"temperatura {temp} °C");
+                atencao.Add($"temperatura {tempBruta} °C");
             }
         }
 

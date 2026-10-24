@@ -46,9 +46,11 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Resumo, SistemaVm, DiscoVm, MemoriaVm, CpuVm, GpuVm, BateriaVm, RedeVm, ChecklistVm, LaudoVm,
         };
+        _paginaAtual = Resumo;
+        CriarMenu();
         PaginaAtual = Resumo;
         TituloPagina = Resumo.Titulo;
-        AtualizarMenu();
+        AtualizarDestaque();
     }
 
     public Window Janela { get; set; } = null!;
@@ -152,6 +154,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ItemNav> ItensNav { get; } = new();
 
+    /// <summary>
+    /// Item do rodapé que leva a Configurações. Fica na mesma lógica de destaque dos itens de
+    /// categoria, para que a tela ativa apareça marcada onde quer que ela esteja no menu.
+    /// </summary>
+    public ItemNav ItemConfiguracoes { get; private set; } = null!;
+
     public void NavegarPara(PaginaBase pagina)
     {
         if (pagina is null)
@@ -166,28 +174,57 @@ public sealed partial class MainViewModel : ObservableObject
             pagina.AoAtivar();
         }
 
-        AtualizarMenu();
+        AtualizarDestaque();
     }
 
     /// <summary>Usado pelos testes de interface: navega sem disparar coleta assíncrona.</summary>
     public bool DemonstracaoDeTeste { get; set; }
 
-    private void AtualizarMenu()
+    /// <summary>
+    /// Monta o menu uma única vez. Cada item recebe um comando sem parâmetro que captura a sua
+    /// própria página — assim o botão do DataTemplate funciona sem <c>CommandParameter</c>.
+    /// </summary>
+    private void CriarMenu()
     {
-        ItensNav.Clear();
         foreach (var pagina in Paginas)
         {
-            var geometria = Application.Current?.TryFindResource(pagina.Icone) as Geometry;
-            ItensNav.Add(new ItemNav
-            {
-                Pagina = pagina,
-                Rotulo = pagina.Titulo,
-                GeometriaIcone = geometria ?? Geometry.Empty,
-                Comando = new RelayCommand<PaginaBase>(p => NavegarPara(p!)),
-                Selecionado = ReferenceEquals(pagina, PaginaAtual),
-            });
+            ItensNav.Add(CriarItem(pagina));
+        }
+
+        ItemConfiguracoes = CriarItem(ConfigVm);
+    }
+
+    private ItemNav CriarItem(PaginaBase pagina)
+    {
+        var geometria = Application.Current?.TryFindResource(pagina.Icone) as Geometry;
+        return new ItemNav
+        {
+            Pagina = pagina,
+            Rotulo = pagina.Titulo,
+            GeometriaIcone = geometria ?? Geometry.Empty,
+            Comando = new RelayCommand(() => NavegarPara(pagina)),
+            Selecionado = false,
+        };
+    }
+
+    /// <summary>
+    /// Atualiza o destaque <b>in loco</b>. Recriar <see cref="ItensNav"/> substituiria os botões e o
+    /// menu perderia o foco do teclado a cada clique.
+    /// </summary>
+    private void AtualizarDestaque()
+    {
+        foreach (var item in ItensNav)
+        {
+            item.Selecionado = ReferenceEquals(item.Pagina, PaginaAtual);
+        }
+
+        if (ItemConfiguracoes is not null)
+        {
+            ItemConfiguracoes.Selecionado = ReferenceEquals(ConfigVm, PaginaAtual);
         }
     }
+
+    partial void OnPaginaAtualChanged(PaginaBase value) => AtualizarDestaque();
 
     [RelayCommand]
     private void NavegarIndice(string indice)
@@ -213,6 +250,36 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void AbrirConfiguracoes() => NavegarPara(ConfigVm);
+
+    /// <summary>
+    /// Atalho Ctrl+N: começa um atendimento novo — volta ao Resumo, limpa os resultados da sessão e
+    /// dispara o diagnóstico rápido. Não apaga laudos gravados nem o histórico em disco.
+    /// </summary>
+    [RelayCommand]
+    private void IniciarNovoDiagnostico()
+    {
+        NavegarPara(Resumo);
+
+        UltimoDiagnostico = null;
+        Inventario = null;
+        Discos = Array.Empty<DiscoInfo>();
+        Bateria = null;
+        Rede = null;
+        EstresseCpu = null;
+        BenchmarkCpu = null;
+        ResultadoGpu = null;
+        TesteMemoria = null;
+        AmostrasSensores = Array.Empty<AmostraSensores>();
+        Varreduras = Array.Empty<ResultadoVarreduraSuperficie>();
+        VerificacaoFs = null;
+
+        Resumo.LimparResultados();
+
+        if (Resumo.DiagnosticoRapidoCommand.CanExecute(null))
+        {
+            Resumo.DiagnosticoRapidoCommand.Execute(null);
+        }
+    }
 
     public (bool Ok, string? Pasta) EscolherPasta() => SolicitarPasta?.Invoke() ?? (false, null);
 }

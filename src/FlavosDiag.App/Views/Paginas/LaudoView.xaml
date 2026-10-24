@@ -52,20 +52,20 @@
             </Border>
 
             <!-- Erro e resultado da exportação -->
-            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{StaticResource FlavosFalha}"
+            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{DynamicResource FlavosFalha}"
                     Visibility="{Binding Erro, Converter={StaticResource TextoVisivel}}">
-                <TextBlock Text="{Binding Erro}" TextWrapping="Wrap" Foreground="{StaticResource FlavosFalha}" />
+                <TextBlock Text="{Binding Erro}" TextWrapping="Wrap" Foreground="{DynamicResource FlavosFalha}" />
             </Border>
-            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{StaticResource FlavosOk}"
+            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{DynamicResource FlavosOk}"
                     Visibility="{Binding AvisoExportacao, Converter={StaticResource TextoVisivel}}">
                 <TextBlock Text="{Binding AvisoExportacao}" TextWrapping="Wrap" />
             </Border>
 
             <!-- Modo demonstração -->
-            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{StaticResource FlavosAtencao}"
+            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{DynamicResource FlavosAtencao}"
                     Visibility="{Binding Demonstracao, Converter={StaticResource BoolVisivel}}">
                 <TextBlock Text="Este laudo está em modo demonstração: os dados são fictícios e o PDF registra isso no rodapé."
-                           TextWrapping="Wrap" Foreground="{StaticResource FlavosAtencao}" />
+                           TextWrapping="Wrap" Foreground="{DynamicResource FlavosAtencao}" />
             </Border>
 
             <!-- Veredito geral -->

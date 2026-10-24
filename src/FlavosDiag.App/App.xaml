@@ -19,6 +19,7 @@
             <conv:TextoParaVisibilidade x:Key="TextoVisivel" />
             <conv:ColecaoVaziaParaVisibilidade x:Key="ColecaoVazia" />
             <conv:BytesParaTexto x:Key="Bytes" />
+            <conv:SelecaoParaFundo x:Key="FundoDestaqueMenu" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

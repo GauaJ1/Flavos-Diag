@@ -43,7 +43,31 @@ public sealed partial class ResumoViewModel : PaginaBase
 
     protected override Task CarregarAsync() => Task.CompletedTask;
 
-    [RelayCommand]
+    /// <summary>
+    /// Descarta os resultados da sessão na tela. Usado pelo atalho Ctrl+N. Não apaga arquivos:
+    /// laudos já gravados e o histórico continuam em disco.
+    /// </summary>
+    public void LimparResultados()
+    {
+        Categorias.Clear();
+        Etapas.Clear();
+        Progresso = 0;
+        EtapaAtual = string.Empty;
+        DuracaoTexto = string.Empty;
+        UltimaLimitacao = null;
+        Erro = null;
+        Executando = false;
+        VereditoGeral = VereditoInconclusivoInicial;
+        ResumoGeral = "Nenhum diagnóstico executado nesta sessão.";
+    }
+
+    /// <summary>
+    /// Diagnóstico rápido cancelável. <c>IncludeCancelCommand</c> gera
+    /// <c>DiagnosticoRapidoCancelCommand</c>, que aciona o token recebido em
+    /// <paramref name="cancelamento"/>; o botão Cancelar da tela chama esse comando.
+    /// O token é repassado a cada etapa, então o cancelamento interrompe na etapa corrente.
+    /// </summary>
+    [RelayCommand(IncludeCancelCommand = true)]
     public async Task DiagnosticoRapidoAsync(CancellationToken cancelamento)
     {
         if (Executando)
@@ -105,8 +129,12 @@ public sealed partial class ResumoViewModel : PaginaBase
         }
         catch (OperationCanceledException)
         {
+            // Cancelar é uma escolha do técnico, não uma falha: o estado é registrado como cancelado,
+            // sem veredito e sem erro, para não deixar a tela parecendo que o computador falhou.
             EtapaAtual = "Diagnóstico cancelado.";
-            Erro = "Diagnóstico rápido cancelado pelo usuário.";
+            ResumoGeral = "Diagnóstico cancelado antes de concluir. Nenhum veredito foi emitido.";
+            VereditoGeral = VereditoInconclusivoInicial;
+            Progresso = 0;
         }
         catch (Exception ex)
         {

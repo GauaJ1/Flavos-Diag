@@ -520,7 +520,11 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
     private static SaudeNvme ConverterNvme(LogSaudeNvme log) => new()
     {
         AvisoCritico = Leitura<int>.Ok(log.AvisoCritico, "NVMe log 0x02"),
-        TemperaturaCelsius = Leitura<int>.Ok(log.TemperaturaCelsius, "NVMe log 0x02"),
+        // O campo Kelvin vem zerado em alguns controladores: "sem leitura" tem de sair como ausência com
+        // causa, senão o laudo anuncia "0 °C" como se o sensor tivesse medido.
+        TemperaturaCelsius = log.TemperaturaCelsius is { } celsius
+            ? Temperatura.InterpretarTemperatura(celsius, "NVMe log 0x02")
+            : Leitura<int>.NaoSuportado(Temperatura.CausaSentinelaOuForaDaFaixa, "NVMe log 0x02"),
         EspacoDisponivelPercentual = Leitura<int>.Ok(log.EspacoDisponivelPercentual, "NVMe log 0x02"),
         LimiarEspacoDisponivel = Leitura<int>.Ok(log.LimiarEspacoPercentual, "NVMe log 0x02"),
         PercentualVidaUsada = Leitura<double>.Ok(log.PercentualVidaUsada, "NVMe log 0x02"),
@@ -578,7 +582,7 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
                         {
                             ErrosLeituraNaoCorrigidos = LerContador<long>(contador, "ReadErrorsUncorrected", "ReadErrorsTotal"),
                             DesgastePercentual = LerContador<int>(contador, "Wear"),
-                            TemperaturaCelsius = LerContador<int>(contador, "Temperature"),
+                            TemperaturaCelsius = LerTemperaturaContador(contador),
                             HorasLigado = LerContador<long>(contador, "PowerOnHours"),
                         };
                         contador.Dispose();
@@ -600,6 +604,23 @@ public sealed class DiscosWindowsProvider : IDiscoProvider
 
             return mapa;
         }, cancelamento);
+    }
+
+    /// <summary>
+    /// Leitura da temperatura em <c>MSFT_StorageReliabilityCounter</c>.
+    /// </summary>
+    /// <remarks>
+    /// Some drivers expõem o contador com 0 ou 255 quando o termistor não está calibrado. Esses sentinelas
+    /// (e qualquer valor fora de 1–120 °C) precisam virar ausência com causa: publicados como estão, o
+    /// técnico leria "0 °C" como uma medição real. A regra de faixa é a mesma do SMART e do NVMe
+    /// (<see cref="Temperatura"/>), para nenhuma fonte divergir da outra.
+    /// </remarks>
+    internal static Leitura<int> LerTemperaturaContador(ManagementObject objeto)
+    {
+        var bruta = LerContador<int>(objeto, "Temperature");
+        return bruta.Disponivel
+            ? Temperatura.InterpretarTemperatura(bruta.Valor, bruta.Fonte)
+            : bruta;
     }
 
     private static Leitura<T> LerContador<T>(ManagementObject objeto, params string[] nomes)

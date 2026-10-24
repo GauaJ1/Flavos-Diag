@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:FlavosDiag.App.Views"
         Title="Flavos Diag"
-        Width="1240" Height="820" MinWidth="980" MinHeight="640"
+        Width="1240" Height="820" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         FontFamily="{DynamicResource FlavosFonte}"
         FontSize="13"
@@ -24,6 +24,7 @@
         <KeyBinding Key="D8" Modifiers="Control" Command="{Binding NavegarIndiceCommand}" CommandParameter="7" />
         <KeyBinding Key="D9" Modifiers="Control" Command="{Binding NavegarIndiceCommand}" CommandParameter="8" />
         <KeyBinding Key="D0" Modifiers="Control" Command="{Binding NavegarIndiceCommand}" CommandParameter="9" />
+        <KeyBinding Key="N" Modifiers="Control" Command="{Binding IniciarNovoDiagnosticoCommand}" />
         <KeyBinding Key="T" Modifiers="Control" Command="{Binding AlternarTemaCommand}" />
         <KeyBinding Key="F1" Command="{Binding AbrirConfiguracoesCommand}" />
     </Window.InputBindings>
@@ -40,7 +41,7 @@
             <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Top" Margin="20,22,20,18">
                     <StackPanel Orientation="Horizontal">
-                        <Border Width="30" Height="30" CornerRadius="8" Background="{StaticResource FlavosPetroleo}">
+                        <Border Width="30" Height="30" CornerRadius="8" Background="{DynamicResource FlavosPetroleo}">
                             <Path Data="M8,21 L13,12 L18,21 L23,7" Stretch="Uniform" Stroke="White" StrokeThickness="2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Margin="6" />
                         </Border>
@@ -66,7 +67,8 @@
                     </Button>
                     <Button Style="{StaticResource BotaoSecundario}" HorizontalAlignment="Stretch" Margin="0,0,0,12"
                             Command="{Binding AbrirConfiguracoesCommand}" ToolTip="Configurações (F1)"
-                            AutomationProperties.Name="Configurações">
+                            AutomationProperties.Name="Configurações"
+                            Background="{Binding ItemConfiguracoes.Selecionado, Converter={StaticResource FundoDestaqueMenu}}">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icone}" Stroke="{DynamicResource FlavosTexto}" Margin="0,0,8,0">
                                 <Path.Data>

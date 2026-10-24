@@ -90,3 +90,34 @@ public sealed class BytesParaTexto : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
+
+/// <summary>
+/// bool "selecionado" → pincel de fundo do item ativo do menu.
+/// <para>
+/// Usado pelo botão de Configurações, que fica no rodapé (fora do <c>ItemsControl</c>) e por isso não
+/// recebe o <c>DataTrigger</c> dos itens de categoria. Serve para que a tela ativa apareça destacada
+/// também ali. O <see cref="Brush"/> devolvido é o objeto do dicionário de tema atual — como o
+/// aplicativo troca o dicionário inteiro ao alternar o tema, a ligação é refeita e o pincel acompanha.
+/// </para>
+/// </summary>
+public sealed class SelecaoParaFundo : IValueConverter
+{
+    /// <summary>Chave do pincel de fundo do item selecionado.</summary>
+    public string ChaveSelecionado { get; set; } = "FlavosInconclusivoFundo";
+
+    /// <summary>Chave do pincel de fundo do item normal.</summary>
+    public string ChaveNormal { get; set; } = "FlavosSuperficieAlt";
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var chave = value is true ? ChaveSelecionado : ChaveNormal;
+        if (Application.Current?.TryFindResource(chave) is Brush pincel)
+        {
+            return pincel;
+        }
+
+        return Brushes.Transparent;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}

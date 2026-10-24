@@ -40,6 +40,11 @@
     </UserControl.Resources>
 
     <Grid>
+        <!--
+          Sem ScrollViewer aqui de propósito: cada página já tem o seu, e aninhar dois quebraria a
+          roda do mouse. O que garante que nenhuma página fique cortada é o ContentControl esticar
+          com a janela e a página rolar por dentro até a altura disponível.
+        -->
         <ContentControl x:Name="Conteudo" Content="{Binding PaginaAtual}" Focusable="False" />
 
         <!-- Barra de status de carregamento (acessível e visível em todas as telas) -->
@@ -47,7 +52,7 @@
                 Background="{DynamicResource FlavosInconclusivoFundo}"
                 Visibility="{Binding PaginaAtual.Carregando, Converter={StaticResource BoolVisivel}}">
             <StackPanel Orientation="Horizontal">
-                <ProgressBar Width="70" Height="4" IsIndeterminate="True" Foreground="{StaticResource FlavosPetroleo}" VerticalAlignment="Center" />
+                <ProgressBar Width="70" Height="4" IsIndeterminate="True" Foreground="{DynamicResource FlavosPetroleo}" VerticalAlignment="Center" />
                 <TextBlock Text="Carregando…" Margin="8,0,0,0" FontSize="11" Foreground="{DynamicResource FlavosTextoSuave}" VerticalAlignment="Center" />
             </StackPanel>
         </Border>

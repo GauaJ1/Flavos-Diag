@@ -1,7 +1,23 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Sobreposição do modo escuro: mesmo esquema de chaves, valores ajustados para contraste AA. -->
+    <!--
+      Sobreposição do modo escuro: SOMENTE CORES, com as mesmas chaves de Tema.xaml.
+      Este dicionário é mesclado por App.AplicarTema; como fica por último, os valores daqui
+      vencem os do tema claro. Estilos não moram aqui: duplicar um Style neste arquivo faria o
+      tema escuro ter uma cópia congelada das cores, e a troca de tema em tempo de execução
+      deixaria de atualizar aquela parte da interface.
+
+      Para acrescentar uma cor nova, crie a chave nos DOIS arquivos (Tema.xaml e aqui) e use-a
+      sempre por DynamicResource em Tema.xaml e nas Views.
+    -->
+
+    <!-- Destaque: verde-petróleo mais claro no escuro, para manter contraste AA. -->
+    <SolidColorBrush x:Key="FlavosPetroleo" Color="#14B8A6" />
+    <SolidColorBrush x:Key="FlavosPetroleoEscuro" Color="#0F766E" />
+    <SolidColorBrush x:Key="FlavosPetroleoClaro" Color="#5EEAD4" />
+
+    <!-- Semântica: verde OK, âmbar Atenção, vermelho Falha, cinza Inconclusivo. -->
     <SolidColorBrush x:Key="FlavosOk" Color="#4ADE80" />
     <SolidColorBrush x:Key="FlavosAtencao" Color="#FBBF24" />
     <SolidColorBrush x:Key="FlavosFalha" Color="#F87171" />
@@ -12,6 +28,7 @@
     <SolidColorBrush x:Key="FlavosFalhaFundo" Color="#3B1515" />
     <SolidColorBrush x:Key="FlavosInconclusivoFundo" Color="#1E293B" />
 
+    <!-- Tinta e superfícies. -->
     <SolidColorBrush x:Key="FlavosTexto" Color="#F1F5F9" />
     <SolidColorBrush x:Key="FlavosTextoSuave" Color="#94A3B8" />
     <SolidColorBrush x:Key="FlavosSuperficie" Color="#0F172A" />
@@ -19,60 +36,8 @@
     <SolidColorBrush x:Key="FlavosBorda" Color="#1E293B" />
     <SolidColorBrush x:Key="FlavosFoco" Color="#2DD4BF" />
 
-    <Style x:Key="BotaoSecundario" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
-        <Setter Property="Padding" Value="14,8" />
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource FlavosSuperficieAlt}" />
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosPetroleoClaro}" />
-                        </Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosFoco}" />
-                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="CaixaTexto" TargetType="TextBox">
-        <Setter Property="MinHeight" Value="34" />
-        <Setter Property="Padding" Value="8,6" />
-        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
-        <Setter Property="Background" Value="{StaticResource FlavosSuperficie}" />
-        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
-        <Setter Property="CaretBrush" Value="{StaticResource FlavosTexto}" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosFoco}" />
-                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
+    <!-- Tinta sobre o destaque (texto de botão primário). No claro é branco puro; no escuro,
+         o verde-petróleo fica claro e o texto precisa de tinta escura para manter contraste. -->
+    <SolidColorBrush x:Key="FlavosTextoNoDestaque" Color="#06201C" />
 
 </ResourceDictionary>

@@ -585,3 +585,127 @@ mim logo depois). Isso confirma que o pacote autocontido roda, não apenas que f
   instalado, então o autocontido não foi provado em ambiente sem runtime.
 - **SmartScreen/antivírus**: o executável não é assinado; o comportamento em máquina de cliente não foi
   observado.
+---
+
+## Correções de interface e de dados (8 itens)
+
+Trabalho feito depois da Fase 5, a partir de uma lista de defeitos encontrada em uso real. Todos os oito
+itens foram corrigidos e os quatro que tinham teste automatizado possível têm teste passando.
+
+### 1. Menu lateral não navegava (crítico)
+
+**Causa:** o `Button` do `DataTemplate` não passava `CommandParameter`, então o
+`RelayCommand<PaginaBase>` recebia `null` e nenhum item navegava. Pior: como a coleção `ItensNav` era
+recriada a cada navegação, o menu também perdia o foco do teclado.
+
+**Correção:** `ItemNav` virou `ObservableObject` com `Selecionado` observável; `ItensNav` é montada **uma
+única vez no construtor**; cada item recebe um `RelayCommand` sem parâmetro que **captura a sua própria
+página**; o destaque é atualizado **in loco** em `AtualizarDestaque`, chamado pelo `OnPaginaAtualChanged`.
+O item **Configurações** (rodapé) entra na mesma lógica de destaque, com um conversor
+`SelecaoParaFundo` que devolve o pincel do tema atual.
+
+### 2. Botão Cancelar não cancelava
+
+**Causa:** o botão estava ligado ao próprio `DiagnosticoRapidoCommand` (que se recusava a rodar de novo por
+causa do `if (Executando) return;`). O comando de cancelamento não existia.
+
+**Correção:** `[RelayCommand(IncludeCancelCommand = true)]` em `DiagnosticoRapidoAsync`, botão ligado a
+`DiagnosticoRapidoCancelCommand`. Cancelar agora registra "Diagnóstico cancelado", **não** produz erro nem
+veredito Falha, e devolve o progresso a zero.
+
+### 3. Duplicação de estilos no tema escuro
+
+**Causa:** `TemaEscuro.xaml` repetia `BotaoSecundario` e `CaixaTexto` e usava `StaticResource` para cores,
+congelando o valor do tema claro na carga. Eram 32 usos de `StaticResource` de cor em 5 arquivos.
+
+**Correção:** `TemaEscuro.xaml` agora contém **somente cores** (0 estilos), cobrindo todas as chaves do
+tema claro. Os 32 usos foram convertidos para `DynamicResource`. Foi criada a chave
+`FlavosTextoNoDestaque` porque o texto do botão primário estava em `White` fixo (no escuro o verde fica
+claro). `App.AplicarTema` passou a usar URI com nome de assembly, que resolve também fora do assembly do
+app.
+
+### 4. Temperatura 0/255 virava leitura
+
+**Causa:** `SmartNvme` devolvia `0` quando desconhecido; o contador do Windows e o atributo ATA 0xC2 não
+validavam faixa.
+
+**Correção:** uma regra única, `FaixaTemperatura` no Core (`1..120 °C`; 0 e 255 são sentinelas), usada pelo
+Core e pelos Providers. `LogSaudeNvme.TemperaturaCelsius` passou a `int?`. Atributo SMART inválido continua
+listado, marcado `LeituraIndisponivel`, e é ignorado pelo avaliador — não gera Atenção. Corrigido também o
+`Regras.cs`, que ainda fazia `Bruto(194) & 0xFF >= 60` e transformava o sentinela 255 em "temperatura 255 °C".
+
+### 5. Memória sem teste dava OK
+
+**Causa:** inventário era tratado como se fosse teste.
+
+**Correção:** sem teste registrado → **Inconclusivo** (vence qualquer outra regra); teste limpo →
+**Inconclusivo** (não prova nada); 1 divergência → **Atenção** com recomendação de repetir; 2 ou mais
+execuções com erro → **Falha**. Total abaixo de 4 GiB continua **Atenção**, mas só quando houve teste.
+Novo campo `ResultadoTesteMemoria.ExecucoesComErro` (padrão 1) e o runner passou a preenchê-lo.
+
+### 6. Janela maior que a tela
+
+`MainWindow` limita `Width`/`Height` ao `SystemParameters.WorkArea`, reduz o mínimo quando preciso e
+centraliza. As páginas já tinham rolagem própria, então **não** foi aninhado um segundo `ScrollViewer`
+(isso quebraria a roda do mouse) — o teste confirma isso.
+
+### 7. Testes de interface
+
+Novo arquivo `tests\FlavosDiag.Tests\InterfaceTests.cs`, **11 casos**, todos usando os comandos reais:
+
+- comando de cada um dos 10 itens do menu navega para a sua página;
+- o comando funciona **sem parâmetro** (era exatamente o defeito) e ignora parâmetro estranho;
+- Configurações navega pelo rodapé e pelo F1, com destaque;
+- só um item fica selecionado por vez;
+- `ItensNav` **não é recriada** ao navegar;
+- **Ctrl+N** volta ao Resumo, limpa a sessão e refaz o inventário;
+- troca de tema muda as chaves de cor e volta ao original (em thread STA com `Application` real);
+- tema escuro não contém estilos e cobre todas as chaves de cor;
+- todo item do menu tem ícone e a chave de ícone de cada página existe;
+- cancelar interrompe em menos de 2 s e não vira Falha.
+
+### 8. Roteiro manual
+
+`docs\ROTEIRO-TESTE-MANUAL.md` ganhou a seção **4A** com os quatro passos de clique humano: cada item do
+menu, alternar tema 3 vezes, iniciar e cancelar o diagnóstico, e redimensionar a janela em 1366×768 e
+1920×1080 a 100% e 150%.
+
+### Evidência de verificação
+
+```
+PS> dotnet build FlavosDiag.sln -warnaserror --nologo -v q
+    0 Aviso(s)
+    0 Erro(s)
+
+PS> dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 133 | Aprovados: 133 | Falhas: 0 | Ignorados: 0
+
+PS> powershell -ExecutionPolicy Bypass -File .\build\cleanroom.ps1
+CLEAN ROOM: nenhum achado.
+
+PS> dotnet run --project tools\ChecagemEncoding -c Debug
+Arquivos com problema: 0
+
+PS> (executável do app aberto e observado por 15 s)
+APP RODANDO: janela aberta apos 15s (sem crash)
+```
+
+Conferências de tema feitas por inspeção, além do teste:
+
+```
+StaticResource de cor restantes no App ............ 0
+<Style> dentro de TemaEscuro.xaml ................. 0
+chaves de cor no tema claro ....................... 19
+chaves de cor no tema escuro ...................... 18 (+ FlavosFonte, que é fonte, não cor)
+```
+
+### O que NÃO foi verificado nestas correções
+
+- **Clique real na tela**: os testes chamam o mesmo comando que o botão chama, mas não há clique de mouse
+  automatizado. O item 4A do roteiro cobre isso.
+- **Aparência da troca de tema**: as chaves de cor mudam (testado); que o desenho fique correto e legível
+  nos dois temas é conferência visual.
+- **1366×768 e 150%**: depende de tela física; a limitação ao `WorkArea` é lógica e não foi vista em
+  resolução real diferente da desta máquina.
+- **Cancelamento durante cada etapa específica**: o teste cancela logo no início; não foram exercitadas
+  todas as etapas individualmente.

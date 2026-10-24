@@ -33,6 +33,13 @@ public sealed record AtributoSmart
 
     /// <summary>Interpretação em linguagem simples.</summary>
     public required string Interpretacao { get; init; }
+
+    /// <summary>
+    /// Indica se o atributo está presente no bloco mas <b>não</b> contém uma leitura aproveitável
+    /// (ex.: temperatura 0/255/fora de faixa). Existe para o consumidor saber que o atributo é um sentinela
+    /// e não uma medição real: ele continua listado, porém sem entrar em nenhum veredito.
+    /// </summary>
+    public bool LeituraIndisponivel { get; init; }
 }
 
 /// <summary>Log de saúde NVMe (subconjunto interpretado).</summary>

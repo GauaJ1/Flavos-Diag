@@ -130,6 +130,81 @@ Resultado observado: ______________________________________________
 
 ---
 
+## 4A. Verificações de interface (dependem de clique humano)
+
+Os testes automatizados cobrem os comandos, mas não provam que o botão na tela está ligado ao comando
+certo, nem que o desenho está legível. Estes quatro passos fecham essa lacuna.
+
+### 4A.1 Clicar em cada item do menu
+
+Para **cada um dos 10 itens** (Resumo, Sistema, Disco, Memória, CPU, GPU, Bateria, Rede, Checklist, Laudo)
+e também para **Configurações** (botão do rodapé):
+
+1. Clique no item.
+2. Confira: o título no topo muda para o nome da página; o conteúdo muda; **o item clicado fica destacado**
+   e os outros não.
+
+- **Esperado:** os 11 itens navegam. Se algum não fizer nada, o defeito voltou.
+- **Esperado em Configurações:** o botão do rodapé fica destacado como os demais.
+- **Esperado:** clicar repetidamente no mesmo item não "pisca" nem perde o foco do teclado.
+
+Marque os que funcionaram: ______ de 11
+
+### 4A.2 Alternar o tema 3 vezes
+
+1. Abra uma categoria qualquer (ex.: Disco) para haver conteúdo na tela.
+2. Clique em **Alternar tema** (rodapé) ou pressione **Ctrl+T**. Repita **3 vezes**.
+3. A cada troca, confira visualmente: fundo, textos, cartões, **e os botões do rodapé** (tema e
+   Configurações) — inclusive o texto dentro deles e a borda.
+4. Abra a aba **Configurações** e confira os campos de texto.
+
+- **Esperado:** toda a interface acompanha a troca, sem nenhum pedaço preso no tema anterior e **sem
+  reiniciar o programa**.
+- **Esperado após 3 trocas:** o tema voltou ao estado inicial (3 é ímpar: claro → escuro → claro → escuro,
+  ou o inverso), coerente com o rótulo do botão.
+- **Esperado:** o texto continua legível nos dois temas (contraste).
+
+Resultado observado: ______________________________________________
+
+### 4A.3 Iniciar e cancelar o diagnóstico
+
+1. Na aba **Resumo**, clique em **Diagnóstico rápido**.
+2. Assim que a barra começar a andar, clique em **Cancelar**.
+
+- **Esperado:** a execução para **em menos de 2 segundos**.
+- **Esperado:** a tela mostra "Diagnóstico cancelado" e **não** mostra erro nem veredito **Falha** —
+  cancelar é escolha do técnico, não defeito do equipamento.
+- **Esperado:** o botão "Diagnóstico rápido" volta a ficar clicável (dá para começar de novo).
+
+Repita uma vez deixando o diagnóstico terminar, para confirmar que sem cancelar ele conclui normalmente.
+
+Resultado observado: ______________________________________________
+
+### 4A.4 Redimensionar a janela
+
+Testar em **1366×768** e em **1920×1080**, com escala do Windows em **100%** e em **150%**
+(Configurações → Sistema → Tela → Escala).
+
+1. Abra o programa e confira se a janela **cabe inteira na tela** (nada para fora, nem embaixo).
+2. Confira se os botões do rodapé (tema e Configurações) estão **visíveis e clicáveis**.
+3. Em cada página, confira se aparece **barra de rolagem** quando o conteúdo passa da altura da janela, e
+   se o fim do conteúdo pode ser alcançado.
+4. Arraste a janela para o menor tamanho permitido e repita os itens 2 e 3.
+
+- **Esperado:** nenhum conteúdo fica cortado e nada fica inalcançável.
+- **Esperado:** a roda do mouse rola a página (uma rolagem só, sem "travar").
+
+Resultado observado por combinação:
+
+| Resolução | Escala | Coube? | Rolagem ok? | Observação |
+|---|---|---|---|---|
+| 1366×768 | 100% | | | |
+| 1366×768 | 150% | | | |
+| 1920×1080 | 100% | | | |
+| 1920×1080 | 150% | | | |
+
+---
+
 ## 5. Verificações de honestidade
 
 Estas não dependem de hardware. São conferências de que o programa não "finge".
@@ -170,3 +245,7 @@ Resultado observado: ______________________________________________
 | Estresse de CPU e teste de memória em hardware real | não verificado (proibido executar autonomamente) |
 | Instalação em máquina limpa sem .NET | não verificado (o pacote roda nesta máquina) |
 | SmartScreen / antivírus | não verificado (executável não assinado) |
+| Clique real em cada item do menu (11 itens) | comandos cobertos por teste automatizado; o clique na tela é manual (item 4A.1) |
+| Troca de tema vista a olho nu | chaves de cor cobertas por teste automatizado; o visual é manual (item 4A.2) |
+| Cancelamento do diagnóstico pela tela | comando coberto por teste automatizado; o clique é manual (item 4A.3) |
+| Janela em 1366×768 / 1920×1080 a 100% e 150% | depende da tela física; manual (item 4A.4) |
