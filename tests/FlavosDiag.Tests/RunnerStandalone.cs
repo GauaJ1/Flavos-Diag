@@ -14,6 +14,13 @@ public static class RunnerStandalone
 {
     public static int Main(string[] args)
     {
+        if (args.Contains("--roteiro-inventario"))
+        {
+            var destino = args.SkipWhile(a => a != "--pasta").Skip(1).FirstOrDefault()
+                          ?? Path.Combine(Path.GetTempPath(), "flavos-roteiro");
+            return RoteiroInventario.ExecutarAsync(destino).GetAwaiter().GetResult();
+        }
+
         var saida = args.SkipWhile(a => a != "--saida").Skip(1).FirstOrDefault()
                     ?? Path.Combine(AppContext.BaseDirectory, "resultados.trx");
 

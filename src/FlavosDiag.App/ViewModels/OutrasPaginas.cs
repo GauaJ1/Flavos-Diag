@@ -134,24 +134,6 @@ public sealed partial class ChecklistViewModel : PaginaBase
     }
 }
 
-public sealed partial class LaudoViewModel : PaginaBase
-{
-    public LaudoViewModel(MainViewModel principal) : base(principal, "Laudo", "IconeLaudo")
-    {
-    }
-
-    [ObservableProperty]
-    private string? _status;
-
-    public void Recarregar() => Carregado = false;
-
-    protected override Task CarregarAsync()
-    {
-        Status = "O laudo é gerado a partir de um diagnóstico.";
-        return Task.CompletedTask;
-    }
-}
-
 public sealed partial class ConfigViewModel : PaginaBase
 {
     public ConfigViewModel(MainViewModel principal) : base(principal, "Configurações", "IconeConfig")

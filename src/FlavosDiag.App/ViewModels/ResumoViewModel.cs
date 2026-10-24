@@ -101,7 +101,7 @@ public sealed partial class ResumoViewModel : PaginaBase
             Principal.RedeVm.Recarregar();
             Principal.MemoriaVm.Recarregar();
             Principal.CpuVm.Recarregar();
-            Principal.LaudoVm.Recarregar();
+            Principal.LaudoVm.Recalcular();
         }
         catch (OperationCanceledException)
         {

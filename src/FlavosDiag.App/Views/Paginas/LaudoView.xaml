@@ -1,10 +1,149 @@
-﻿<UserControl x:Class="FlavosDiag.App.Views.Paginas.LaudoView"
+<UserControl x:Class="FlavosDiag.App.Views.Paginas.LaudoView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Style="{StaticResource Cartao}" VerticalAlignment="Top">
-        <StackPanel Orientation="Horizontal">
-            <Path Style="{StaticResource Icone}" Data="{StaticResource IconeInterrogacao}" Stroke="{DynamicResource FlavosTextoSuave}" Margin="0,0,10,0" />
-            <TextBlock Text="{Binding Status}" Style="{StaticResource TextoSuave}" VerticalAlignment="Center" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <!-- Ação principal: exportar -->
+            <Border Style="{StaticResource Cartao}" Padding="22">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Laudo técnico" Style="{StaticResource TituloSecao}" FontSize="20" />
+                        <TextBlock Style="{StaticResource TextoSuave}" Margin="0,4,24,0" MaxWidth="660" HorizontalAlignment="Left">
+                            Montado a partir do diagnóstico desta sessão. A exportação grava dois arquivos na pasta escolhida:
+                            o JSON (para o sistema do FlavosWare) e o PDF (para entregar ao cliente).
+                        </TextBlock>
+
+                        <Grid Margin="0,14,0,0" MaxWidth="660" HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Número da OS" Style="{StaticResource RotuloCampo}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBox Grid.Column="1" Style="{StaticResource CaixaTexto}" Text="{Binding NumeroOs, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Opcional. Aparece no nome dos arquivos e no laudo."
+                                     AutomationProperties.Name="Número da ordem de serviço" />
+                            <CheckBox Grid.Column="2" Margin="16,0,0,0" VerticalAlignment="Center" Content="Ocultar números de série"
+                                      IsChecked="{Binding MascararSeriais}"
+                                      ToolTip="Mantém apenas os 4 últimos caracteres dos números de série no laudo exportado." />
+                        </Grid>
+
+                        <TextBlock Text="{Binding Status}" Style="{StaticResource TextoSuave}" Margin="0,12,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                        <Button Style="{StaticResource BotaoPrimario}" MinWidth="210" MinHeight="48" FontSize="15"
+                                Command="{Binding ExportarCommand}" IsEnabled="{Binding PodeExportar}"
+                                AutomationProperties.Name="Exportar laudo em JSON e PDF">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource Icone}" Stroke="White" Margin="0,0,10,0" Data="{StaticResource IconePasta}" />
+                                <TextBlock Text="Exportar JSON + PDF" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource BotaoSecundario}" Content="Atualizar prévia" Margin="0,8,0,0"
+                                Command="{Binding AtualizarCommand}" />
+                        <TextBlock Text="Gerando..." Style="{StaticResource TextoSuave}" Margin="0,8,0,0" HorizontalAlignment="Center"
+                                   Visibility="{Binding Carregando, Converter={StaticResource BoolVisivel}}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Erro e resultado da exportação -->
+            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{StaticResource FlavosFalha}"
+                    Visibility="{Binding Erro, Converter={StaticResource TextoVisivel}}">
+                <TextBlock Text="{Binding Erro}" TextWrapping="Wrap" Foreground="{StaticResource FlavosFalha}" />
+            </Border>
+            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{StaticResource FlavosOk}"
+                    Visibility="{Binding AvisoExportacao, Converter={StaticResource TextoVisivel}}">
+                <TextBlock Text="{Binding AvisoExportacao}" TextWrapping="Wrap" />
+            </Border>
+
+            <!-- Modo demonstração -->
+            <Border Style="{StaticResource Cartao}" Margin="0,12,0,0" BorderBrush="{StaticResource FlavosAtencao}"
+                    Visibility="{Binding Demonstracao, Converter={StaticResource BoolVisivel}}">
+                <TextBlock Text="Este laudo está em modo demonstração: os dados são fictícios e o PDF registra isso no rodapé."
+                           TextWrapping="Wrap" Foreground="{StaticResource FlavosAtencao}" />
+            </Border>
+
+            <!-- Veredito geral -->
+            <Border Style="{StaticResource Cartao}" Margin="0,16,0,0" BorderBrush="{Binding VereditoGeral, Converter={StaticResource VereditoPincel}}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="44" Height="44" CornerRadius="10" Background="{Binding VereditoGeral, Converter={StaticResource VereditoFundo}}" Margin="0,0,14,0">
+                        <Path Style="{StaticResource IconeGrande}" Data="{StaticResource IconeLaudo}" Stroke="{Binding VereditoGeral, Converter={StaticResource VereditoPincel}}" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Veredito que irá no laudo" Style="{StaticResource RotuloCampo}" />
+                        <TextBlock Text="{Binding VereditoGeral, Converter={StaticResource VereditoTexto}}" FontSize="20" FontWeight="SemiBold"
+                                   Foreground="{Binding VereditoGeral, Converter={StaticResource VereditoPincel}}" />
+                        <TextBlock Text="{Binding ResumoGeral}" Style="{StaticResource TextoSuave}" Margin="0,2,0,0" MaxWidth="760" TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Categorias -->
+            <TextBlock Text="Categorias" Style="{StaticResource TituloSecao}" Margin="0,20,0,8" />
+            <Border Style="{StaticResource Cartao}" Padding="0">
+                <ItemsControl ItemsSource="{Binding Categorias}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="16,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="130" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Categoria}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Style="{StaticResource Selo}" Background="{Binding Veredito, Converter={StaticResource VereditoFundo}}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Veredito, Converter={StaticResource VereditoTexto}}" FontWeight="SemiBold" FontSize="12"
+                                               Foreground="{Binding Veredito, Converter={StaticResource VereditoPincel}}" />
+                                </Border>
+                                <TextBlock Grid.Column="2" Text="{Binding Resumo}" Style="{StaticResource TextoSuave}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- Limitações -->
+            <TextBlock Text="Limitações (o que não foi possível medir e por quê)" Style="{StaticResource TituloSecao}" Margin="0,20,0,8" />
+            <Border Style="{StaticResource Cartao}">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Limitacoes}" Visibility="{Binding Limitacoes.Count, Converter={StaticResource ColecaoVazia}, ConverterParameter=inverter}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Margin="0,3" Style="{StaticResource TextoSuave}" TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Nenhuma limitação registrada neste diagnóstico." Style="{StaticResource TextoSuave}"
+                               Visibility="{Binding Limitacoes.Count, Converter={StaticResource ColecaoVazia}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Recomendações -->
+            <TextBlock Text="Recomendações" Style="{StaticResource TituloSecao}" Margin="0,20,0,8" />
+            <Border Style="{StaticResource Cartao}">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Recomendacoes}" Visibility="{Binding Recomendacoes.Count, Converter={StaticResource ColecaoVazia}, ConverterParameter=inverter}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,3">
+                                    <TextBlock Text="{Binding Acao}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Justificativa}" Style="{StaticResource TextoSuave}" TextWrapping="Wrap"
+                                               Visibility="{Binding Justificativa, Converter={StaticResource TextoVisivel}}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Nenhuma ação recomendada." Style="{StaticResource TextoSuave}"
+                               Visibility="{Binding Recomendacoes.Count, Converter={StaticResource ColecaoVazia}}" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="{Binding AvisoPontuacao}" Style="{StaticResource TextoSuave}" Margin="0,16,0,24" />
         </StackPanel>
-    </Border>
+    </ScrollViewer>
 </UserControl>

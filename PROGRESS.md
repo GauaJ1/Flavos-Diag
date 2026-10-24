@@ -132,7 +132,118 @@ Status da fase: **concluída**.
 
 ## Fase 1 — Inventário e diagnóstico rápido
 
-Pendente.
+### Entregue
+
+| Item | Situação |
+|---|---|
+| E1 Inventário real (WMI/CIM + DXGI) exibido na aba Sistema, com limitações explícitas | pronto — verificado nesta máquina |
+| E11 Diagnóstico rápido (inventário → discos → bateria → sensores 60 s → rede, com progresso e cancelamento) | pronto (orquestração); discos/bateria/rede reais entram na Fase 2 |
+| Laudo: página própria com prévia (categorias, limitações, recomendações, veredito) | pronto |
+| Exportação do laudo em JSON + PDF na pasta escolhida, sem sobrescrever laudo anterior | pronto |
+
+### O que foi corrigido nesta fase
+
+- Arquivos de código estavam com dupla codificação UTF-8 (texto acentuado virou `Ã§` em comentários e mensagens,
+  e seis caracteres se perderam de vez). Todos consertados; agora há duas ferramentas internas em `tools/`
+  (`ChecagemEncoding` para verificar e `CorrigirEncoding` para consertar) e a verificação terminou com
+  `Arquivos com problema: 0`. Um trecho irrecuperável foi reescrito à mão.
+- O PDF do laudo passou a usar a fonte Geist empacotada: a partir do QuestPDF 2026.9 fontes do sistema não são
+  usadas e o documento falhava com `'Calibri'` indisponível.
+- Layout do PDF corrigido (`col.Item().Height(70).Svg(...)` gerava "conflicting size constraints"; agora o SVG
+  define seu próprio tamanho).
+- JSON do laudo agora sai em UTF-8 legível (`UnsafeRelaxedJsonEscaping`) em vez de `\u00E7`.
+- Evidências do laudo usam formatação pt-BR (`16,0 GB`) e "Não disponível: motivo" em vez de número cru ou "0".
+
+### Evidência de build
+
+```
+PS> dotnet build FlavosDiag.sln -v q
+Compilação com êxito.
+    0 Aviso(s)
+    0 Erro(s)
+```
+
+### Evidência de teste
+
+```
+PS> powershell -NoProfile -ExecutionPolicy Bypass -File .\build\test.ps1 -SemBuild
+Total: 37 | Aprovados: 37 | Falhas: 0 | Ignorados: 0
+Relatório: ...\artifacts\testes.trx
+```
+
+Testes novos da fase 1 (14): esquema versionado do JSON, serial mascarado por padrão, `modoDemonstracao` presente
+só quando é demonstração, aviso de pontuação sempre no arquivo, datas ISO 8601 com offset, dado ausente nunca vira
+valor inventado, assinatura `%PDF-` e tamanho do PDF, SVG do gráfico, gravação do JSON em UTF-8 sem BOM,
+exportação gravando os dois arquivos, exportação sem sobrescrever, mascaramento na exportação, pasta vazia recusada
+e nome de arquivo sem caracteres inválidos.
+
+### Evidência de verificação com hardware real
+
+Roteiro assistido (`dotnet exec FlavosDiag.Tests.dll --roteiro-inventario`), executado nesta máquina:
+
+```
+Sistema: Microsoft Windows 11 Pro
+Build: 26200.8875
+Fabricante da placa: Micro-Star International Co., Ltd.
+Modelo da placa: PRO A620M-E (MS-7E28)
+BIOS: 1.J0
+Processador: AMD Ryzen 5 8500G w/ Radeon 740M Graphics
+Núcleos: 6
+Threads: 12
+Memória total: 16,0 GB
+Pentes de memória: 2
+  - Unknown 8 GiB @ 5200 MT/s (DIMMA1)
+  - Unknown 8 GiB @ 5200 MT/s (DIMMB1)
+GPU(s): 1
+  - AMD Radeon 740M Graphics | VRAM: 0 B | driver 32.0.32015.7029
+Limitações registradas: 2
+  - Timings de memória (CAS/RAS/CL): Sem fonte confiável com licença compatível foi confirmada; o dado não é exibido.
+  - VRAM dedicada da GPU: Não foi possível associar o adaptador DXGI à GPU WMI.
+JSON: ...\artifacts\roteiro\laudo-inventario.json (1674 bytes)
+PDF : ...\artifacts\roteiro\laudo-inventario.pdf (116799 bytes)
+Veredito geral: Atenção
+```
+
+O JSON gerado contém `"numeroSerie": "07E2****8327"` (mascarado), `"memoria": "16,0 GB"`, `"geradoEm":
+"2026-10-24T11:15:03-03:00"` e o aviso de pontuação própria. O PDF tem 1 página, assinatura `%PDF-1.4` e a fonte
+Geist embutida.
+
+Três observações honestas sobre o resultado acima:
+
+1. **Timings de memória**: sem fonte pública com licença compatível, o dado é declarado indisponível em vez de
+   vir de leitura direta de SPD (ver D abaixo).
+2. **VRAM dedicada**: a GPU integrada expõe 0 B via DXGI; o app mostra "0 B" porque **foi lido** — é o valor que o
+   Windows informa para memória dedicada em gráfico integrado, não uma estimativa nossa.
+3. **Veredito "Atenção"** veio de "2 dispositivo(s) com erro no Gerenciador de Dispositivos" — leitura real desta
+   máquina, não de fixture.
+
+### Execução do aplicativo
+
+```
+PS> (execução do .exe por 18 s, modo normal e modo demonstração, stderr capturado)
+modo normal       -> janela "Flavos Diag" aberta por 18 s, stderr vazio
+modo --modo-demo  -> janela "Flavos Diag" aberta por 15 s, stderr vazio
+```
+
+### Verificações obrigatórias da skill
+
+```
+PS> powershell -NoProfile -ExecutionPolicy Bypass -File .\build\cleanroom.ps1
+CLEAN ROOM: nenhum achado.
+
+PS> dotnet list FlavosDiag.sln package --vulnerable --include-transitive
+(nenhum pacote vulnerável em nenhum dos 6 projetos)
+```
+
+### Limitação de verificação (franqueza)
+
+Nesta sessão o modelo não tem entrada de imagem, então **não foi feita inspeção visual** do PDF nem da janela.
+O PDF foi conferido por estrutura (1 página, `%PDF-1.4`, fontes embutidas, 116 KB) e por testes automatizados;
+a conferência visual fica no roteiro manual (`docs/ROTEIRO-TESTE-MANUAL.md`, a criar na Fase 5).
+
+Status da fase: **concluída**.
+
+---
 
 ## Fase 2 — Disco, bateria e rede
 

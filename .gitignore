@@ -7,3 +7,6 @@ tests/**/TestResults/
 *.user
 *.suo
 .vs/
+# Ferramentas internas de manutencao: compilam como projeto, nao fazem parte do produto
+tools/**/bin/
+tools/**/obj/

@@ -14,4 +14,10 @@
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Fonte Geist (SIL OFL 1.1) embutida no PDF do laudo; a licença viaja junto no pacote. -->
+    <EmbeddedResource Include="..\FlavosDiag.App\Assets\Fonts\Geist-Variable.ttf" LogicalName="FlavosDiag.Reports.Fonts.Geist-Variable.ttf" />
+    <EmbeddedResource Include="..\FlavosDiag.App\Assets\Fonts\OFL-Geist.txt" LogicalName="FlavosDiag.Reports.Fonts.OFL-Geist.txt" />
+  </ItemGroup>
+
 </Project>

@@ -34,8 +34,20 @@ public static class LaudoBuilder
 
         if (inv is not null)
         {
-            evidencias.Add(new Evidencia { Titulo = "Processador", Valor = inv.Cpu.Nome.ToString(), Fonte = "Win32_Processor" });
-            evidencias.Add(new Evidencia { Titulo = "Memória", Valor = inv.Memoria.TotalBytes.ToString(), Fonte = "Win32_PhysicalMemory" });
+            evidencias.Add(new Evidencia
+            {
+                Titulo = "Processador",
+                Valor = inv.Cpu.Nome.Disponivel ? inv.Cpu.Nome.Valor! : FormatacaoBr.NaoDisponivel(inv.Cpu.Nome.Causa),
+                Fonte = "Win32_Processor",
+            });
+            evidencias.Add(new Evidencia
+            {
+                Titulo = "Memória instalada",
+                Valor = inv.Memoria.TotalBytes.Disponivel
+                    ? FormatacaoBr.Bytes(inv.Memoria.TotalBytes.Valor)
+                    : FormatacaoBr.NaoDisponivel(inv.Memoria.TotalBytes.Causa),
+                Fonte = "Win32_PhysicalMemory",
+            });
             limitacoes.AddRange(inv.Limitacoes.Select(l => $"{l.Item}: {l.Motivo}"));
         }
 

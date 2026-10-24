@@ -41,6 +41,7 @@ public sealed partial class MainViewModel : ObservableObject
         ChecklistVm = new ChecklistViewModel(this);
         LaudoVm = new LaudoViewModel(this);
         ConfigVm = new ConfigViewModel(this);
+
         Paginas = new ObservableCollection<PaginaBase>
         {
             Resumo, SistemaVm, DiscoVm, MemoriaVm, CpuVm, GpuVm, BateriaVm, RedeVm, ChecklistVm, LaudoVm,
@@ -182,7 +183,7 @@ public sealed partial class MainViewModel : ObservableObject
                 Pagina = pagina,
                 Rotulo = pagina.Titulo,
                 GeometriaIcone = geometria ?? Geometry.Empty,
-                Comando = new RelayCommand<PaginaBase>(NavegarPara),
+                Comando = new RelayCommand<PaginaBase>(p => NavegarPara(p!)),
                 Selecionado = ReferenceEquals(pagina, PaginaAtual),
             });
         }

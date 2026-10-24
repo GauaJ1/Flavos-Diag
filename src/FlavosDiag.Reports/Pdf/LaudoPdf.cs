@@ -7,7 +7,7 @@ using QuestPDF.Infrastructure;
 
 namespace FlavosDiag.Reports.Pdf;
 
-/// <summary>Fachada de geraÃ§Ã£o do PDF do laudo.</summary>
+/// <summary>Fachada de geração do PDF do laudo.</summary>
 public interface IGeradorLaudoPdf
 {
     byte[] Gerar(Laudo laudo);
@@ -15,20 +15,46 @@ public interface IGeradorLaudoPdf
     void GerarArquivo(Laudo laudo, string caminho);
 }
 
-/// <summary>GeraÃ§Ã£o do PDF (1â€“2 pÃ¡ginas) com QuestPDF â€” identidade visual prÃ³pria do Flavos Diag.</summary>
+/// <summary>Geração do PDF (1-2 páginas) com QuestPDF — identidade visual própria do Flavos Diag.</summary>
 public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
 {
     private static readonly string Petroleo = "#0F766E";
     private static readonly string Tinta = "#0F172A";
     private static readonly string Cinza = "#475569";
     private static readonly string Linha = "#E2E8F0";
-    private const string NomeFonte = "Calibri";
-    private const string NomeFonteFallback = "Arial";
+    /// <summary>Fonte do PDF: a mesma família licenciada (SIL OFL 1.1) empacotada na aplicação.</summary>
+    private const string NomeFonte = "Geist";
 
     public GeradorLaudoPdf()
     {
         QuestPDF.Settings.License = LicenseType.Community;
-        QuestPDF.Settings.EnableDebugging = false;
+        QuestPDF.Settings.EnableDetailedLayoutErrors = false;
+        QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
+        RegistrarFonte();
+    }
+
+    private static bool _fonteRegistrada;
+
+    /// <summary>Registra a fonte embutida (licença SIL OFL 1.1) para uso no PDF.</summary>
+    private static void RegistrarFonte()
+    {
+        if (_fonteRegistrada)
+        {
+            return;
+        }
+
+        var assembly = typeof(GeradorLaudoPdf).Assembly;
+        using var fluxo = assembly.GetManifestResourceStream("FlavosDiag.Reports.Fonts.Geist-Variable.ttf");
+        if (fluxo is null)
+        {
+            throw new InvalidOperationException("Fonte do laudo não encontrada no pacote de relatórios.");
+        }
+
+        using var memoria = new MemoryStream();
+        fluxo.CopyTo(memoria);
+        using var fonte = new MemoryStream(memoria.ToArray());
+        QuestPDF.Drawing.FontManager.RegisterFontFromStream(fonte);
+        _fonteRegistrada = true;
     }
 
     private static string Cor(Veredito v) => v switch
@@ -74,7 +100,7 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
                 row.RelativeItem().Column(l =>
                 {
                     l.Item().Text("FLAVOS DIAG").FontSize(16).Bold().FontColor(Petroleo).LetterSpacing(0.08f);
-                    l.Item().Text("Laudo tÃ©cnico de diagnÃ³stico de hardware").FontSize(9).FontColor(Cinza);
+                    l.Item().Text("Laudo técnico de diagnóstico de hardware").FontSize(9).FontColor(Cinza);
                 });
                 row.ConstantItem(190).AlignRight().Column(r =>
                 {
@@ -93,10 +119,10 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
         {
             col.Spacing(8);
 
-            // TÃ©cnico + equipamento
+            // Técnico + equipamento
             col.Item().Row(row =>
             {
-                row.RelativeItem().Element(e => Bloco(e, "TÃ©cnico / empresa", new[]
+                row.RelativeItem().Element(e => Bloco(e, "Técnico / empresa", new[]
                 {
                     ("Nome", laudo.Tecnico.Nome),
                     ("Empresa", laudo.Tecnico.Empresa),
@@ -108,7 +134,7 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
                 {
                     ("Fabricante", laudo.Equipamento.Fabricante),
                     ("Modelo", laudo.Equipamento.Modelo),
-                    ("NÃºmero de sÃ©rie", laudo.Equipamento.NumeroSerie),
+                    ("Número de série", laudo.Equipamento.NumeroSerie),
                     ("Sistema", laudo.Equipamento.SistemaOperacional),
                 }));
             });
@@ -118,7 +144,7 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
                 row.RelativeItem().Element(e => Bloco(e, "Hardware", new[]
                 {
                     ("Processador", laudo.Equipamento.Cpu),
-                    ("MemÃ³ria", laudo.Equipamento.Memoria),
+                    ("Memória", laudo.Equipamento.Memoria),
                     ("Discos", laudo.Equipamento.Discos),
                 }));
                 row.ConstantItem(10);
@@ -147,12 +173,12 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
                 });
             }));
 
-            // EvidÃªncias (atÃ© 12)
+            // Evidências (até 12)
             if (laudo.Evidencias.Count > 0)
             {
                 col.Item().Element(e => e.Column(t =>
                 {
-                    t.Item().Text("EvidÃªncias").Bold().FontSize(10);
+                    t.Item().Text("Evidências").Bold().FontSize(10);
                     t.Item().PaddingTop(2).Table(tab =>
                     {
                         tab.ColumnsDefinition(cols =>
@@ -171,27 +197,27 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
                 }));
             }
 
-            // GrÃ¡fico principal
+            // Gráfico principal
             var serie = laudo.Grafcos.FirstOrDefault();
             if (serie is not null && serie.Valores.Count > 1)
             {
-                col.Item().Text($"GrÃ¡fico: {serie.Titulo}").Bold().FontSize(10);
-                col.Item().Height(70).Svg(BuildSvg(serie));
+                col.Item().Text($"Gráfico: {serie.Titulo}").Bold().FontSize(10);
+                col.Item().Svg(BuildSvg(serie));
             }
 
-            // LimitaÃ§Ãµes
+            // Limitações
             if (laudo.Limitacoes.Count > 0)
             {
-                col.Item().Element(e => Lista(e, "LimitaÃ§Ãµes (o que nÃ£o foi possÃ­vel medir e por quÃª)", laudo.Limitacoes.Take(8)));
+                col.Item().Element(e => Lista(e, "Limitações (o que não foi possível medir e por quê)", laudo.Limitacoes.Take(8)));
             }
 
-            // RecomendaÃ§Ãµes
+            // Recomendações
             if (laudo.Recomendacoes.Count > 0)
             {
                 col.Item().Element(e => Lista(
                     e,
-                    "RecomendaÃ§Ãµes",
-                    laudo.Recomendacoes.Select(r => $"[{r.Prioridade.ToString().ToUpperInvariant()}] {r.Acao}{(r.Justificativa is null ? string.Empty : " â€” " + r.Justificativa)}")));
+                    "Recomendações",
+                    laudo.Recomendacoes.Select(r => $"[{r.Prioridade.ToString().ToUpperInvariant()}] {r.Acao}{(r.Justificativa is null ? string.Empty : " — " + r.Justificativa)}")));
             }
 
             // Checklist
@@ -262,7 +288,7 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
             col.Item().Text(titulo).Bold().FontSize(10);
             foreach (var i in itens)
             {
-                col.Item().PaddingLeft(6).Text("â€¢ " + i).FontSize(8).FontColor(Cinza);
+                col.Item().PaddingLeft(6).Text("• " + i).FontSize(8).FontColor(Cinza);
             }
         });
     }
@@ -276,7 +302,7 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
             {
                 row.RelativeItem().Column(l =>
                 {
-                    l.Item().Text("Assinatura do tÃ©cnico").FontSize(8).FontColor(Cinza);
+                    l.Item().Text("Assinatura do técnico").FontSize(8).FontColor(Cinza);
                     l.Item().PaddingTop(14).Text(Valor(laudo.AssinaturaTecnico)).FontSize(9);
                     l.Item().LineHorizontal(0.5f).LineColor(Cinza);
                 });
@@ -284,10 +310,10 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
                 row.ConstantItem(150).AlignRight().Column(r =>
                 {
                     r.Item().Text($"Flavos Diag {laudo.VersaoAplicativo}").FontSize(7).FontColor(Cinza);
-                    r.Item().Text(laudo.SeriaisMascarados ? "NÃºmeros de sÃ©rie mascarados" : "NÃºmeros de sÃ©rie completos").FontSize(7).FontColor(Cinza);
+                    r.Item().Text(laudo.SeriaisMascarados ? "Números de série mascarados" : "Números de série completos").FontSize(7).FontColor(Cinza);
                     if (laudo.ModoDemonstracao)
                     {
-                        r.Item().Text("MODO DEMONSTRAÃ‡ÃƒO â€” dados fictÃ­cios").FontSize(7).FontColor("#B91C1C").Bold();
+                        r.Item().Text("MODO DEMONSTRAÇÃO — dados fictícios").FontSize(7).FontColor("#B91C1C").Bold();
                     }
                 });
             });
@@ -301,7 +327,7 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
         });
     }
 
-    /// <summary>SVG prÃ³prio (texto gerado pela aplicaÃ§Ã£o) com a sÃ©rie principal.</summary>
+    /// <summary>SVG próprio (texto gerado pela aplicação) com a série principal.</summary>
     public static string BuildSvg(SerieEvidencia serie)
     {
         const float w = 520f;
@@ -332,6 +358,6 @@ public sealed class GeradorLaudoPdf : IGeradorLaudoPdf
         return sb.ToString();
     }
 
-    private static string Valor(string? t) => string.IsNullOrWhiteSpace(t) ? "â€”" : t;
+    private static string Valor(string? t) => string.IsNullOrWhiteSpace(t) ? "-" : t;
 }
 
