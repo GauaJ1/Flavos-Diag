@@ -13,6 +13,7 @@ public enum FonteSaudeDisco
     SmartAta = 1,
     Nvme = 2,
     ConfiabilidadeWindows = 3,
+    EstadoWindows = 4,
 }
 
 /// <summary>Atributo SMART (ATA), valores padronizados pela especificação pública.</summary>
@@ -79,6 +80,18 @@ public sealed record SaudeDisco
     public required SaudeNvme? Nvme { get; init; }
 
     public required ConfiabilidadeWindows? Confiabilidade { get; init; }
+
+    /// <summary>
+    /// Previsão de falha do Windows (IOCTL_STORAGE_PREDICT_FAILURE), usada quando o pass-through ATA
+    /// não está disponível. <c>null</c> = o dispositivo não respondeu a essa consulta.
+    /// </summary>
+    public bool? PrevisaoFalhaWindows { get; init; }
+
+    /// <summary>
+    /// Estado de saúde declarado pela API de armazenamento do Windows (MSFT_PhysicalDisk.HealthStatus).
+    /// <c>true</c> = saudável, <c>false</c> = aviso ou não saudável, <c>null</c> = não informado.
+    /// </summary>
+    public bool? SaudavelSegundoWindows { get; init; }
 
     public required IReadOnlyList<DadoAusente> Limitacoes { get; init; }
 }

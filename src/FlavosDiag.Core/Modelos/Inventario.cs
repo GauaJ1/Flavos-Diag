@@ -135,6 +135,15 @@ public sealed record InfoAdaptadorRede
     public required Leitura<string> Tipo { get; init; }
 
     public required bool Ativo { get; init; }
+
+    /// <summary>Endereço IPv4 do adaptador (ausente quando não tem).</summary>
+    public Leitura<string> EnderecoIp { get; init; } = Leitura<string>.NaoLido();
+
+    /// <summary>Roteador padrão informado para o adaptador.</summary>
+    public Leitura<string> Gateway { get; init; } = Leitura<string>.NaoLido();
+
+    /// <summary>Servidores DNS do adaptador, separados por vírgula.</summary>
+    public Leitura<string> ServidoresDns { get; init; } = Leitura<string>.NaoLido();
 }
 
 public sealed record InfoBateria

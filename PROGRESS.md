@@ -247,8 +247,102 @@ Status da fase: **concluída**.
 
 ## Fase 2 — Disco, bateria e rede
 
-Pendente.
+### Entregue
 
+| Item | Situação |
+|---|---|
+| E3 Identificação de discos (modelo, firmware, série, barramento, tipo de mídia, tamanho) | pronto — verificado com 3 discos reais |
+| E3 Saúde do disco: SMART ATA, log NVMe, previsão de falha do Windows, estado da API de armazenamento | pronto, com fontes por disco e limitação explícita quando uma via não responde |
+| E3 Benchmark de disco em arquivo próprio, com arquivo apagado no final (inclusive em erro e cancelamento) | pronto — 3 testes verdes |
+| E3 Varredura de superfície somente leitura sobre arquivo próprio | pronto |
+| E3 Verificação do sistema de arquivos com `chkdsk /scan` (somente leitura, sem agendar correção) | pronto |
+| E4 Bateria: `powercfg /batteryreport` (XML) + WMI, saúde = atual / projeto | pronto — máquina de teste não tem bateria, exercitado por fixture |
+| E5 Rede: adaptadores, gateway, ICMP, DNS, Wi-Fi, teste de velocidade só para servidor informado | pronto — verificado com rede real |
+
+### Evidência de build
+
+```
+PS> dotnet build FlavosDiag.sln --nologo -v q
+Compilação com êxito.
+    0 Aviso(s)
+    0 Erro(s)
+```
+
+### Evidência de teste
+
+```
+PS> powershell -NoProfile -ExecutionPolicy Bypass -File .\build\test.ps1 -SemBuild
+Total: 60 | Aprovados: 60 | Falhas: 0 | Ignorados: 0
+```
+
+Testes novos da fase 2 (23): decodificação do bloco SMART (saudável, realocados, pendentes, vazio), log NVMe
+(desgaste alto, saudável, aviso crítico), agregação de veredito por fonte de saúde, saúde da bateria
+(saudável/degradada/sem ciclos/XML inválido), ping sem resposta, URL de velocidade inválida, benchmark
+(recusa sem espaço, apaga o arquivo ao concluir, apaga ao cancelar, mede leitura/escrita/IOPS/latência),
+e "sem fonte de saúde nunca vira OK".
+
+### Evidência de verificação com hardware real (executado como administrador)
+
+```
+=== DISCOS ===
+Discos encontrados: 3
+  [0] SATA SSD | FW 0200Ic10 | SATA | Ssd | 223,6 GB
+      série: 2020****0238
+      fontes de saúde: SmartAta, EstadoWindows
+      LIMITAÇÃO — Atributos SMART detalhados (ATA): Este controlador não repassa os atributos SMART;
+                   a avaliação usa a previsão de falha do Windows.
+                   O dispositivo recusou o comando SMART (status 0x51, erro 0x04).
+  [1] STT256I1-2YAMCG2 | FW 060gAA10 | SATA | Ssd | 238,5 GB
+      série: 2419****4204
+      fontes de saúde: SmartAta, EstadoWindows
+  [2] JMicron | FW 0215 | USB | mídia não informada | 931,5 GB
+      série: DB12****86AE
+      fontes de saúde: EstadoWindows
+      LIMITAÇÃO — Atributos SMART (ATA): Função não suportada por este dispositivo.
+
+=== BATERIA ===
+  presente: não
+  LIMITAÇÃO — Bateria: Nenhuma bateria encontrada neste equipamento. Não se aplica.
+
+=== REDE ===
+  adaptadores: 8 (Wi-Fi 6E, Ethernet, 2 túneis de VPN, Npcap, Wi-Fi Direct, Bluetooth)
+  gateway: 192.168.0.1 | latência 8,2 ms
+  alvo 8.8.8.8: 75,8 ms (perda 0%)
+  DNS www.microsoft.com: resolvido em 94 ms
+  Wi-Fi: CASA163_5GHZ 2
+```
+
+### O que a verificação real revelou (e foi corrigido)
+
+1. **Nenhum disco aparecia.** A identificação usava só IOCTL de descritor, que devolve "acesso negado" sem
+   elevação; o provider engolia tudo e devolvia lista vazia. Agora a lista vem do WMI
+   (`Win32_DiskDrive` + `MSFT_PhysicalDisk`), que funciona sem administrador (D30).
+2. **SMART falhava mesmo elevado.** O handle era aberto somente-leitura e o driver de armazenamento só
+   repassa o pass-through ATA com acesso de escrita; o comando continua sendo só leitura
+   (`SMART READ DATA`), nenhum setor é escrito (D31).
+3. **Bateria era "presente" numa máquina sem bateria.** O `powercfg` gera o XML com `<Batteries></Batteries>`
+   vazio em desktop; "o arquivo existe" não prova presença (D33).
+4. **Gateway e Wi-Fi vinham vazios com internet funcionando.** O primeiro adaptador ativo era um túnel de VPN
+   sem rota padrão, e o `powershell.exe` era procurado em `System32` em vez de
+   `System32\WindowsPowerShell\v1.0` (D34).
+
+### O que NÃO foi verificado (franqueza)
+
+- **Atributos SMART detalhados** (setores realocados, horas, temperatura) não são legíveis nesta máquina: o
+  controlador recusa o comando SMART nos dois SSDs SATA e a ponte USB não o suporta. Toda a lógica de
+  interpretação está coberta por fixtures no formato da especificação, mas **não foi confirmada em disco real**.
+  O veredito daqui usa a previsão de falha e o estado de saúde do Windows.
+- **NVMe**: esta máquina não tem disco NVMe; só a fixture foi exercitada.
+- **Bateria**: máquina de mesa, sem bateria. Só fixture.
+- **Benchmark e varredura** foram executados em pasta temporária pequena, não em disco cheio nem em HDD real.
+- **`chkdsk /scan`** não foi executado (leva dezenas de minutos); só a validação de entrada está testada.
+- **Wi-Fi**: SSID lido corretamente, mas intensidade de sinal e qualidade continuam "não disponível" — a
+  consulta exige API sem fio que ainda não foi implementada, e inventar número seria pior.
+
+Status da fase: **concluída com as ressalvas acima** (itens sem verificação real registrados aqui e no
+relatório final).
+
+---
 ## Fase 3 — Sensores, estresse e benchmark
 
 Pendente.

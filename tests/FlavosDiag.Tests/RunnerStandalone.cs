@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Xml.Linq;
@@ -14,6 +15,13 @@ public static class RunnerStandalone
 {
     public static int Main(string[] args)
     {
+        if (args.Contains("--roteiro-fase2"))
+        {
+            var destinoFase2 = args.SkipWhile(a => a != "--pasta").Skip(1).FirstOrDefault()
+                               ?? Path.Combine(Path.GetTempPath(), "flavos-roteiro");
+            return RoteiroFase2.ExecutarAsync(destinoFase2).GetAwaiter().GetResult();
+        }
+
         if (args.Contains("--roteiro-inventario"))
         {
             var destino = args.SkipWhile(a => a != "--pasta").Skip(1).FirstOrDefault()
@@ -36,6 +44,48 @@ public static class RunnerStandalone
         var ignorados = 0;
         var resultados = new List<(string Nome, string Classe, string Resultado, string? Mensagem, double Segundos)>();
         var relogio = System.Diagnostics.Stopwatch.StartNew();
+
+        // Tabelas de casos: tipos com static IEnumerable<(string, Func<Task>)> Casos().
+        foreach (var tipo in assembly.GetTypes().Where(t => t.IsClass && t.IsAbstract && t.IsSealed))
+        {
+            var fabrica = tipo.GetMethod("Casos", BindingFlags.Public | BindingFlags.Static);
+            if (fabrica is null || !fabricaLanca()) { continue; }
+            foreach (var item in (IEnumerable)fabrica.Invoke(null, null)!)
+            {
+                if (item is null) { continue; }
+                var campos = item.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+                var nome = (string)(campos.FirstOrDefault(f => f.Name == "Item1")?.GetValue(item) ?? tipo.Name);
+                var corpo = (Func<Task>)(campos.FirstOrDefault(f => f.Name == "Item2")?.GetValue(item) ?? throw new InvalidOperationException("caso sem corpo"));
+                total++;
+                var relogioCaso = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    if (!corpo().Wait(TimeSpan.FromMinutes(10)))
+                    {
+                        throw new TimeoutException("teste excedeu 10 minutos");
+                    }
+
+                    relogioCaso.Stop();
+                    resultados.Add((nome, tipo.Name, "Passed", null, relogioCaso.Elapsed.TotalSeconds));
+                    Console.WriteLine($"  ok   {nome}");
+                }
+                catch (Exception ex)
+                {
+                    relogioCaso.Stop();
+                    var real = ex is AggregateException { InnerException: { } interno } ? interno : ex;
+                    falhas++;
+                    resultados.Add((nome, tipo.Name, "Failed", real.ToString(), relogioCaso.Elapsed.TotalSeconds));
+                    Console.WriteLine($"  FAIL {nome}");
+                    Console.WriteLine("       " + real.Message.Replace("\n", "\n       "));
+                }
+            }
+
+            continue;
+
+            bool fabricaLanca() => fabrica.GetParameters().Length == 0
+                                   && fabrica.ReturnType != typeof(object)
+                                   && typeof(IEnumerable).IsAssignableFrom(fabrica.ReturnType);
+        }
 
         foreach (var tipo in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract && !t.IsGenericTypeDefinition))
         {
