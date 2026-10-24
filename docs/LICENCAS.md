@@ -25,7 +25,7 @@ Data de verificação: 24/10/2026.
 | smartctl (smartmontools) *(opcional, Fase 2)* | 7.4 | **GPL-2.0** | `tools/` opcional, chamado como **processo separado** com `-j` | Só será empacotado se necessário e com texto GPL completo + oferta de código-fonte. Decisão em DECISOES.md. |
 
 ### 1.1 Transparência sobre pacotes consultados
-O pacote `DiskInfoToolkit` (MPL-2.0) foi **baixado e inspecionado apenas como metadado de licença**. Não foi decompilado, desmontado nem depurado. A regra de clean room (proibição de engenharia reversa de qualquer ferramenta de diagnóstico) é respeitada: qualquer uso é apenas como dependência transitiva do monitor de sensores, nunca para implementar SMART.
+O pacote `DiskInfoToolkit` (MPL-2.0) foi **baixado e inspecionado apenas como metadado de licença**. Não foi desmontado nem depurado. A regra de clean room (proibição de engenharia reversa de qualquer ferramenta de diagnóstico) é respeitada: qualquer uso é apenas como dependência transitiva do monitor de sensores, nunca para implementar SMART.
 
 ## 2. QuestPDF Community License — condição de elegibilidade (IMPORTANTE)
 

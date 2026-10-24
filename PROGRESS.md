@@ -9,8 +9,54 @@ Convenções:
 
 ---
 
-## Fase 0 — Fundação
+## Skills do projeto
 
+Instaladas em `.skills/` a partir do pacote enviado pelo dono (`flavos-diag-skills.zip`), versionadas junto
+do projeto porque valem só para ele:
+
+| Skill | Onde |
+|---|---|
+| flavos-diag-clean-room (+ `scripts/cleanroom_scan.py` e `cleanroom_allow.txt`) | `.skills/flavos-diag-clean-room/` |
+| flavos-diag-safety-rules | `.skills/flavos-diag-safety-rules/` |
+| csharp-wpf-standards | `.skills/csharp-wpf-standards/` |
+| windows-hardware-providers | `.skills/windows-hardware-providers/` |
+| diag-verdicts-and-reports | `.skills/diag-verdicts-and-reports/` |
+| diag-testing-and-autonomy | `.skills/diag-testing-and-autonomy/` |
+| flavos-diag-ui | `.skills/flavos-diag-ui/` |
+
+Ajustes feitos na instalação (registrados em `docs/DECISOES.md` como D26–D28):
+
+- pasta `.skills/` em vez de `.claude/`, porque nesta sessão as skills são lidas por caminho e a pasta
+  de outro assistente pode ser gerenciada por ferramentas externas;
+- verificador de clean room portado para PowerShell (`build/cleanroom.ps1`), porque Python não está
+  instalado nesta máquina; a lista de termos, as pastas varridas e a lista de exceções são as mesmas;
+- `cleanroom_allow.txt` recebeu o cabeçalho original (o pacote veio com a lista de exceções vazia, e o
+  documento que precisa citar as proibições é `docs/RISCOS-LEGAIS.md`).
+
+Verificação executada após a instalação:
+
+```
+PS> powershell -NoProfile -ExecutionPolicy Bypass -File .\build\cleanroom.ps1
+CLEAN ROOM: nenhum achado.
+
+PS> dotnet list FlavosDiag.sln package --vulnerable --include-transitive
+O projeto fornecido `FlavosDiag.Core` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Workloads` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Reports` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Providers` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.App` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+O projeto fornecido `FlavosDiag.Tests` não tem nenhum pacote vulnerável, considerando as fontes atuais.
+```
+
+Um achado real foi corrigido nessa verificação: `docs/LICENCAS.md` usava o verbo proibido pela própria
+skill de clean room ao descrever o que **não** foi feito com um pacote; a frase foi reescrita.
+
+Conflitos entre as skills e o briefing do projeto: nenhum até aqui. Se aparecer, vale a regra mais
+restritiva e o conflito é registrado em `docs/DECISOES.md`.
+
+---
+
+## Fase 0 — Fundação
 **Objetivo:** solução .NET 8 com camadas Core / Workloads / Providers / Reports / App / Tests, identidade
 visual, navegação, configuração persistida, modo demonstração e a primeira suíte automatizada.
 

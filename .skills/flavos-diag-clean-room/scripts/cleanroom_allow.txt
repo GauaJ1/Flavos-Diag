@@ -1,0 +1,4 @@
+# Excecoes do verificador de clean room (um caminho relativo por linha).
+# Cada excecao deve ser justificada em docs/DECISOES.md.
+# A propria lista de proibicoes (termos de ferramentas de terceiros) precisa cita-los:
+docs/RISCOS-LEGAIS.md
