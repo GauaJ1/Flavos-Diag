@@ -1,0 +1,66 @@
+<UserControl x:Class="FlavosDiag.App.Views.ConteudoPagina"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:FlavosDiag.App.ViewModels"
+             xmlns:vistas="clr-namespace:FlavosDiag.App.Views.Paginas">
+    <UserControl.Resources>
+        <DataTemplate DataType="{x:Type vm:ResumoViewModel}">
+            <vistas:ResumoView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SistemaViewModel}">
+            <vistas:SistemaView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DiscoViewModel}">
+            <vistas:DiscoView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:MemoriaViewModel}">
+            <vistas:MemoriaView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CpuViewModel}">
+            <vistas:CpuView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:GpuViewModel}">
+            <vistas:GpuView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:BateriaViewModel}">
+            <vistas:BateriaView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:RedeViewModel}">
+            <vistas:RedeView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ChecklistViewModel}">
+            <vistas:ChecklistView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:LaudoViewModel}">
+            <vistas:LaudoView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ConfigViewModel}">
+            <vistas:ConfigView />
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <ContentControl x:Name="Conteudo" Content="{Binding PaginaAtual}" Focusable="False" />
+
+        <!-- Barra de status de carregamento (acessível e visível em todas as telas) -->
+        <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,4,4" Padding="10,6" CornerRadius="6"
+                Background="{DynamicResource FlavosInconclusivoFundo}"
+                Visibility="{Binding PaginaAtual.Carregando, Converter={StaticResource BoolVisivel}}">
+            <StackPanel Orientation="Horizontal">
+                <ProgressBar Width="70" Height="4" IsIndeterminate="True" Foreground="{StaticResource FlavosPetroleo}" VerticalAlignment="Center" />
+                <TextBlock Text="Carregando…" Margin="8,0,0,0" FontSize="11" Foreground="{DynamicResource FlavosTextoSuave}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- Erro de página (nunca silencioso) -->
+        <Border VerticalAlignment="Top" Padding="12" Margin="0,0,0,0" CornerRadius="8"
+                Background="{DynamicResource FlavosFalhaFundo}"
+                Visibility="{Binding PaginaAtual.Erro, Converter={StaticResource TextoVisivel}}">
+            <DockPanel>
+                <Path DockPanel.Dock="Left" Style="{StaticResource Icone}" Stroke="{DynamicResource FlavosFalha}" Margin="0,0,8,0"
+                      Data="M12,3 L22,20 H2 Z M12,9 V14 M12,17 V17.5" />
+                <TextBlock Text="{Binding PaginaAtual.Erro}" Foreground="{DynamicResource FlavosFalha}" TextWrapping="Wrap" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

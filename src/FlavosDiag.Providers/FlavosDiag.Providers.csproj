@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>FlavosDiag.Providers</RootNamespace>
+    <AssemblyName>FlavosDiag.Providers</AssemblyName>
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlavosDiag.Core\FlavosDiag.Core.csproj" />
+    <ProjectReference Include="..\FlavosDiag.Workloads\FlavosDiag.Workloads.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="10.0.13" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.7-pre771" />
+  </ItemGroup>
+
+</Project>

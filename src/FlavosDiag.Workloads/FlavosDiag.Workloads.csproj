@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>FlavosDiag.Workloads</RootNamespace>
+    <AssemblyName>FlavosDiag.Workloads</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlavosDiag.Core\FlavosDiag.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,78 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Sobreposição do modo escuro: mesmo esquema de chaves, valores ajustados para contraste AA. -->
+    <SolidColorBrush x:Key="FlavosOk" Color="#4ADE80" />
+    <SolidColorBrush x:Key="FlavosAtencao" Color="#FBBF24" />
+    <SolidColorBrush x:Key="FlavosFalha" Color="#F87171" />
+    <SolidColorBrush x:Key="FlavosInconclusivo" Color="#94A3B8" />
+
+    <SolidColorBrush x:Key="FlavosOkFundo" Color="#14321F" />
+    <SolidColorBrush x:Key="FlavosAtencaoFundo" Color="#3A2A0B" />
+    <SolidColorBrush x:Key="FlavosFalhaFundo" Color="#3B1515" />
+    <SolidColorBrush x:Key="FlavosInconclusivoFundo" Color="#1E293B" />
+
+    <SolidColorBrush x:Key="FlavosTexto" Color="#F1F5F9" />
+    <SolidColorBrush x:Key="FlavosTextoSuave" Color="#94A3B8" />
+    <SolidColorBrush x:Key="FlavosSuperficie" Color="#0F172A" />
+    <SolidColorBrush x:Key="FlavosSuperficieAlt" Color="#111C33" />
+    <SolidColorBrush x:Key="FlavosBorda" Color="#1E293B" />
+    <SolidColorBrush x:Key="FlavosFoco" Color="#2DD4BF" />
+
+    <Style x:Key="BotaoSecundario" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource FlavosSuperficieAlt}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosPetroleoClaro}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosFoco}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="CaixaTexto" TargetType="TextBox">
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="BorderBrush" Value="{StaticResource FlavosBorda}" />
+        <Setter Property="Background" Value="{StaticResource FlavosSuperficie}" />
+        <Setter Property="Foreground" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="CaretBrush" Value="{StaticResource FlavosTexto}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource FlavosFoco}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

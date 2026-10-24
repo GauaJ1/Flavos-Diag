@@ -1,0 +1,24 @@
+<Application x:Class="FlavosDiag.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:conv="clr-namespace:FlavosDiag.App.Converters"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Wpf.Ui;component/Resources/Wpf.Ui.xaml" />
+                <ResourceDictionary Source="Theme/Tema.xaml" />
+                <ResourceDictionary Source="Converters/Icone.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <conv:VereditoParaPincel x:Key="VereditoPincel" />
+            <conv:VereditoParaPincel x:Key="VereditoFundo" Fundo="True" />
+            <conv:VereditoParaTexto x:Key="VereditoTexto" />
+            <conv:BoolParaVisibilidade x:Key="BoolVisivel" />
+            <conv:TextoParaVisibilidade x:Key="TextoVisivel" />
+            <conv:ColecaoVaziaParaVisibilidade x:Key="ColecaoVazia" />
+            <conv:BytesParaTexto x:Key="Bytes" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

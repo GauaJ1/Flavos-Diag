@@ -1,0 +1,9 @@
+# Artefatos gerados por build/teste
+bin/
+obj/
+artifacts/
+tests/**/TestResults/
+*.trx
+*.user
+*.suo
+.vs/

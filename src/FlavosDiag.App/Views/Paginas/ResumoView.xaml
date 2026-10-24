@@ -1,0 +1,108 @@
+<UserControl x:Class="FlavosDiag.App.Views.Paginas.ResumoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <!-- Ação principal -->
+            <Border Style="{StaticResource Cartao}" Padding="22">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Diagnóstico rápido" Style="{StaticResource TituloSecao}" FontSize="20" />
+                        <TextBlock Style="{StaticResource TextoSuave}" Margin="0,4,24,0" MaxWidth="640" HorizontalAlignment="Left">
+                            Inventário, saúde dos discos, bateria, sensores por 60 segundos e rede básica.
+                            Sem teste de esforço. Leva de 2 a 4 minutos.
+                        </TextBlock>
+                        <TextBlock Text="{Binding EtapaAtual}" Margin="0,10,0,0" FontWeight="SemiBold" Foreground="{StaticResource FlavosPetroleo}"
+                                   Visibility="{Binding EtapaAtual, Converter={StaticResource TextoVisivel}}" />
+                        <ProgressBar Height="4" Margin="0,10,0,0" Maximum="1" Value="{Binding Progresso, Mode=OneWay}"
+                                     Foreground="{StaticResource FlavosPetroleo}" Background="{DynamicResource FlavosBorda}"
+                                     Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}}"
+                                     AutomationProperties.Name="Progresso do diagnóstico" />
+                        <TextBlock Text="{Binding DuracaoTexto}" Style="{StaticResource TextoSuave}" Margin="0,8,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Top" Orientation="Horizontal">
+                        <Button Style="{StaticResource BotaoSecundario}" Content="Cancelar" Margin="0,0,8,0" MinHeight="48"
+                                Command="{Binding DiagnosticoRapidoCommand}" Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}}" />
+                        <Button Style="{StaticResource BotaoPrimario}" MinWidth="210" MinHeight="48" FontSize="15"
+                                Command="{Binding DiagnosticoRapidoCommand}"
+                                Visibility="{Binding Executando, Converter={StaticResource BoolVisivel}, ConverterParameter=inverter}"
+                                AutomationProperties.Name="Iniciar diagnóstico rápido" ToolTip="Iniciar diagnóstico rápido (F5)">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource Icone}" Stroke="White" Margin="0,0,10,0" Data="M13,2 L4,14 H11 L10,22 L20,9 H13 Z" />
+                                <TextBlock Text="Diagnóstico rápido" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Semáforo por categoria -->
+            <TextBlock Text="Semáforo por categoria" Style="{StaticResource TituloSecao}" Margin="0,20,0,8" />
+            <Border Style="{StaticResource Cartao}" Padding="0" Visibility="{Binding Categorias.Count, Converter={StaticResource ColecaoVazia}, ConverterParameter=inverter}">
+                <ItemsControl ItemsSource="{Binding Categorias}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="16,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="130" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Categoria}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Style="{StaticResource Selo}" Background="{Binding Veredito, Converter={StaticResource VereditoFundo}}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Veredito, Converter={StaticResource VereditoTexto}}" FontWeight="SemiBold" FontSize="12"
+                                               Foreground="{Binding Veredito, Converter={StaticResource VereditoPincel}}" />
+                                </Border>
+                                <TextBlock Grid.Column="2" Text="{Binding Resumo}" Style="{StaticResource TextoSuave}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+            <Border Style="{StaticResource Cartao}" Visibility="{Binding Categorias.Count, Converter={StaticResource ColecaoVazia}}">
+                <StackPanel Orientation="Horizontal">
+                    <Path Style="{StaticResource Icone}" Data="{StaticResource IconeInterrogacao}" Stroke="{DynamicResource FlavosTextoSuave}" Margin="0,0,10,0" />
+                    <TextBlock Text="Nenhuma categoria avaliada ainda. Use o botão Diagnóstico rápido para começar." Style="{StaticResource TextoSuave}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Veredito geral -->
+            <Border Style="{StaticResource Cartao}" Margin="0,16,0,0" BorderBrush="{Binding VereditoGeral, Converter={StaticResource VereditoPincel}}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="44" Height="44" CornerRadius="10" Background="{Binding VereditoGeral, Converter={StaticResource VereditoFundo}}" Margin="0,0,14,0">
+                        <Path Style="{StaticResource IconeGrande}" Data="{StaticResource IconeResumo}" Stroke="{Binding VereditoGeral, Converter={StaticResource VereditoPincel}}" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Veredito geral" Style="{StaticResource RotuloCampo}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding VereditoGeral, Converter={StaticResource VereditoTexto}}" FontSize="20" FontWeight="SemiBold"
+                                       Foreground="{Binding VereditoGeral, Converter={StaticResource VereditoPincel}}" />
+                            <TextBlock Text="{Binding ResumoGeral}" Style="{StaticResource TextoSuave}" Margin="14,6,0,0" MaxWidth="760" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding UltimaLimitacao}" Style="{StaticResource TextoSuave}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Etapas -->
+            <TextBlock Text="Etapas do último diagnóstico" Style="{StaticResource TituloSecao}" Margin="0,20,0,8" />
+            <Border Style="{StaticResource Cartao}">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Etapas}" Visibility="{Binding Etapas.Count, Converter={StaticResource ColecaoVazia}, ConverterParameter=inverter}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Margin="0,2" Style="{StaticResource TextoSuave}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="As etapas aparecem aqui durante o diagnóstico." Style="{StaticResource TextoSuave}"
+                               Visibility="{Binding Etapas.Count, Converter={StaticResource ColecaoVazia}}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
