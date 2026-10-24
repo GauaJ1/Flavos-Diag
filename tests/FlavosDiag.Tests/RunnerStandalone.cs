@@ -22,6 +22,14 @@ public static class RunnerStandalone
             return RoteiroFase2.ExecutarAsync(destinoFase2).GetAwaiter().GetResult();
         }
 
+        if (args.Contains("--roteiro-fase4"))
+        {
+            var destinoFase4 = args.SkipWhile(a => a != "--pasta").Skip(1).FirstOrDefault()
+                               ?? Path.Combine(Path.GetTempPath(), "flavos-roteiro");
+            RoteiroFase4.ExecutarAsync(destinoFase4).GetAwaiter().GetResult();
+            return 0;
+        }
+
         if (args.Contains("--roteiro-inventario"))
         {
             var destino = args.SkipWhile(a => a != "--pasta").Skip(1).FirstOrDefault()

@@ -165,7 +165,7 @@ public sealed class Servicos : IDisposable
             Discos = new FlavosDiag.Providers.Discos.DiscosWindowsProvider(),
             Bateria = new FlavosDiag.Providers.Bateria.BateriaWindowsProvider(),
             Rede = new FlavosDiag.Providers.Rede.RedeWindowsProvider(),
-            Gpu = new GpuProviderIndisponivel("Disponível na Fase 4."),
+            Gpu = new FlavosDiag.Providers.Gpu.GpuD3D11Provider(new FlavosDiag.Providers.Sensores.SensoresHardwareFactory()),
             Memoria = new FlavosDiag.Workloads.TesteMemoriaRunner(),
             CargaCpu = new FlavosDiag.Workloads.CargaCpuRunner(),
             Elevacao = new ElevacaoService(ambiente),

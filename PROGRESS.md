@@ -428,8 +428,74 @@ regra de não estressar hardware durante o desenvolvimento autônomo.
 ---
 ## Fase 4 — GPU
 
-Pendente.
+### Entregue
 
+| Item | Situação |
+|---|---|
+| E7 Prova de carga de GPU em Direct3D 11, fora de tela, sem janela | pronto — verificado em hardware real |
+| E7 Detecção de artefatos por hash de pixels (FNV-1a 64 bits sobre 256×256 RGBA float) | pronto |
+| E7 Monitoramento de reinício do driver (TDR) | pronto |
+| E7 Benchmark de GPU com pontuação própria | pronto |
+| Limite de temperatura da GPU (85 °C) e teto de 2 min sem sensor | pronto |
+
+### Evidência de build
+
+```
+PS> dotnet build FlavosDiag.sln -c Release -warnaserror --nologo -v q
+Compilação com êxito.
+    0 Aviso(s)
+    0 Erro(s)
+```
+
+### Evidência de teste
+
+```
+PS> dotnet exec tests\FlavosDiag.Tests\bin\Debug\net8.0-windows\FlavosDiag.Tests.dll --runner
+Total: 93 | Aprovados: 93 | Falhas: 0 | Ignorados: 0
+```
+
+### Evidência de verificação em hardware real
+
+```
+=== GPU (Direct3D 11, carga curta de verificação) ===
+provider: Direct3D 11 (carga fora de tela)
+adaptador: AMD Radeon 740M Graphics
+duração real: 5,0 s de 5 s
+frames executados: 794
+motivo da parada: ConcluidoPorTempo
+divergências de pixel: 0
+temperatura máxima: não disponível (Este equipamento não expõe sensor de temperatura da GPU.)
+limite configurado: 85 °C
+AVISO: Nenhum sensor de temperatura da GPU respondeu: teste limitado a 2 minutos.
+
+=== pontuação ===
+pontos: 16,5 | fps médio: 161,5
+```
+
+### Bugs reais que a verificação encontrou
+
+1. **Toda GPU seria reprovada.** A primeira execução acusou **806 divergências em 806 frames**. Causa: o shader
+   usava o número do frame no cálculo, então cada frame produzia um resultado diferente por projeto. Um laudo
+   assim condenaria uma GPU saudável. Corrigido: o shader agora é determinístico (o frame deixou de entrar no
+   cálculo), e o resultado caiu para **0 divergências em 794 frames**.
+2. **A causa da falha era descartada.** Quando o dispositivo não podia ser criado, o provider devolvia
+   "não determinado" sem motivo, o que viola a regra de dado ausente com causa. Agora o motivo exato é levado
+   até o resultado (`CausaAusencia`) e a categoria fica Inconclusivo.
+3. **`Vortice.DirectX` não chegava à pasta de saída** por ser dependência apenas transitiva: o app quebrava em
+   tempo de execução com `FileNotFoundException`. Resolvido com referência explícita.
+
+### O que NÃO foi verificado (franqueza)
+
+- **Temperatura da GPU**: os sensores não responderam **sem elevação**. A prova roda, mas o limite de 85 °C não
+  pôde ser exercitado de fato — o teste ficou limitado pelos 2 minutos previstos para esse caso. Com o app
+  elevado a leitura deve responder; isso entra no roteiro manual.
+- **Detecção de artefato com defeito real**: não há GPU defeituosa nesta máquina. O caminho "divergência
+  detectada" está coberto por teste (1 bit alterado muda o hash), mas não foi observado em hardware.
+- **TDR**: nenhum reinício de driver ocorreu nesta máquina; o tratamento dos códigos está testado, o evento real não.
+- **Rasterizador de software (WARP)**: existe como reserva para máquina virtual, mas nesta máquina o caminho
+  usado foi a GPU de hardware.
+
+---
 ## Fase 5 — Checklist, laudo, configurações e empacotamento
 
 Pendente.

@@ -85,10 +85,14 @@
 
 | # | Decisão | Origem |
 |---|---|---|
-| P4-01 | D3D11 + swap chain offscreen; shader HLSL compilado em tempo de build com `fxc`/DXC | **[DOC]** [D3D11 intro](https://learn.microsoft.com/windows/win32/direct3d11/atoc-dx-graphics-direct3d-11), [HLSL compiler](https://learn.microsoft.com/windows/win32/direct3dtools/dx-graphics-hlsl) |
+| P4-01 | D3D11 **sem janela e sem swap chain**: dispositivo + contexto imediatos, compute shader HLSL próprio (`cs_5_0`) **compilado em tempo de execução** com `Vortice.D3DCompiler` (MIT). Não há swap chain porque nada é exibido; uma janela apareceria para o cliente, o que não se aplica a uma prova de bancada. Se a GPU de hardware falhar, tenta-se o rasterizador de software do Windows e registra-se a limitação. | **[DOC]** [D3D11 intro](https://learn.microsoft.com/windows/win32/direct3d11/atoc-dx-graphics-direct3d-11), [HLSL compiler](https://learn.microsoft.com/windows/win32/direct3dtools/dx-graphics-hlsl). **[DECISAO]** compilação em execução em vez de `fxc`/DXC em build: evita distribuir ferramentas de compilação e mantém o pacote portátil menor. |
 | P4-02 | Inventário GPU via DXGI (adapter, VRAM, driver) e WMI | **[DOC]** |
-| P4-03 | Detecção de artefatos: hash de pixels de uma região determinística comparado a uma referência calculada no app | **[DECISAO]** própria. |
+| P4-03 | Detecção de artefatos: hash FNV-1a de 64 bits sobre os pixels (256×256 RGBA float) lidos de volta, comparado a uma **referência executada na mesma sessão**. O shader é determinístico de propósito: o número do quadro **não** entra no cálculo. | **[DECISAO]** própria. A primeira versão usava o quadro no cálculo, o que fazia todo quadro divergir e reprovava qualquer GPU (806/806); corrigido e registrado em `PROGRESS.md`. |
 | P4-04 | Se D3D11 não iniciar → categoria GPU = Inconclusivo com causa | Requisito. |
+| P4-05 | Reinício do driver (TDR) (`0x887A0005/6/7/20`) → motivo de parada `erro`, nunca "sem problemas" | **[DOC]** HRESULTs documentados em [DXGI_ERROR](https://learn.microsoft.com/windows/win32/direct3ddxgi/dxgi-error). |
+| P4-06 | Limite de temperatura da GPU 85 °C, configurável; teto de 2 min quando não há sensor | Requisito de segurança do projeto. Sem sensor, o campo fica `NaoSuportado` com causa — nunca 0 °C nem média estimada. |
+| P4-07 | Pontuação: mediana dos quadros processados por segundo, fórmula própria versionada, com aviso de que não é comparável com outros programas | Requisito do projeto. |
+| P4-08 | `Vortice.DirectX` referenciado **explicitamente** além dos pacotes Diretas do Vortice | **[DECISAO]** própria: como dependência só transitiva ele não era copiado para a pasta de saída e o app falhava em execução com `FileNotFoundException`. |
 
 ## Fase 5 — laudo, checklist, configurações e entrega
 

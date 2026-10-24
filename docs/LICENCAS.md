@@ -17,6 +17,10 @@ Data de verificação: 24/10/2026.
 | RAMSPDToolkit-NDD (Blacktempel) | 1.6.4 | **MPL-2.0** (nuspec) | (transitivo da LHM) | idem |
 | HidSharp (James F. Bellinger) | 2.6.4 | **Apache-2.0** (arquivo `LICENSE.txt` no pacote; "HIDSharp now uses the Apache open-source license") | (transitivo da LHM) | idem |
 | System.Management | 8.0.x (framework) / transitivo | **MIT** (Microsoft) | `FlavosDiag.Providers` | WMI/CIM. |
+| Vortice.Direct3D11 (Amer Koleci) | 3.8.3 | **MIT** — `licenseExpression MIT` confirmado no registro do NuGet | `FlavosDiag.Providers` | Bindings da API pública Direct3D 11 do Windows, usados na prova de carga e detecção de artefatos da GPU. Dependência binária **não modificada**. |
+| Vortice.DXGI | 3.8.3 | **MIT** | `FlavosDiag.Providers` | Enumeração de adaptadores e identificação da GPU. |
+| Vortice.D3DCompiler | 3.8.3 | **MIT** | `FlavosDiag.Providers` | Compilação do shader HLSL próprio em tempo de execução. |
+| Vortice.DirectX | 3.8.3 | **MIT** | `FlavosDiag.Providers` | Base comum dos bindings. Referenciado explicitamente porque, como dependência apenas transitiva, não era copiado para a pasta de saída. |
 | System.IO.Ports | 10.0.13 (transitivo da LHM) | **MIT** (Microsoft) | transitivo | — |
 | System.Threading.AccessControl / System.IO.FileSystem.AccessControl / System.Memory / Microsoft.Win32.Registry / Mono.Posix.NETStandard | diversas | MIT / MIT (Mono.Posix é MIT) | transitivos | — |
 | Microsoft.Windows.CsWin32 *(candidato)* | 0.3.367 | **MIT** (Microsoft) | a avaliar em Fase 4 (GPU) | Gerador de P/Invoke. Se adotado, código gerado é nosso e não há atribuição requerida. |

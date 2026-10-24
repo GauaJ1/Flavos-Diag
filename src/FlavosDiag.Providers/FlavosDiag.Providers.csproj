@@ -5,6 +5,8 @@
     <RootNamespace>FlavosDiag.Providers</RootNamespace>
     <AssemblyName>FlavosDiag.Providers</AssemblyName>
     <Platforms>AnyCPU;x64</Platforms>
+    <!-- Necessário apenas para a leitura de pixels da GPU (ponteiro mapeado do Direct3D). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +17,12 @@
   <ItemGroup>
     <PackageReference Include="System.Management" Version="10.0.13" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.7-pre771" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <!-- Dependência transitiva do Vortice necessária em tempo de execução: sem referência explícita
+         ela não é copiada para a pasta de saída quando o assembly é consumido por outro projeto. -->
+    <PackageReference Include="Vortice.DirectX" Version="3.8.3" />
   </ItemGroup>
 
 </Project>

@@ -89,6 +89,12 @@ public sealed record ResultadoGpu
     public required ResultadoEstresse? Estresse { get; init; }
 
     public required ResultadoBenchmarkGpu? Benchmark { get; init; }
+
+    /// <summary>
+    /// Por que a prova não pôde ser executada. Sem teste, a categoria GPU fica Inconclusiva com esta causa,
+    /// nunca OK por omissão.
+    /// </summary>
+    public string? CausaAusencia { get; init; }
 }
 
 public sealed record ResultadoBenchmarkGpu
